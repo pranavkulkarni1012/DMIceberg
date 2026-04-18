@@ -1,6 +1,5 @@
 ---
 description: "Inspect Iceberg table metadata: schema, snapshots, partitions, manifests, data files, properties, and history. Use when a producer needs to understand table state, debug issues, or audit table health."
-user_invocable: true
 ---
 
 # Iceberg Table Information & Inspection
@@ -163,7 +162,8 @@ from pyiceberg.catalog.glue import GlueCatalog
 
 catalog = GlueCatalog("glue_catalog", **{
     "warehouse": "s3://{bucket}/warehouse/",
-    "region_name": "{region}"
+    "glue.region": "{region}",
+    "s3.region":   "{region}",
 })
 table = catalog.load_table("{database}.{table}")
 

@@ -269,7 +269,7 @@ The skill generates a complete pipeline including:
 | Spark/catalog config | Full Iceberg configuration for the chosen tech stack |
 | Ingestion code | Complete pipeline script with error handling |
 | Maintenance job | Compaction, snapshot expiry, orphan cleanup |
-| IAM roles | Least-privilege IAM policies (CloudFormation) |
+| IAM roles | Least-privilege IAM policies (Terraform) |
 | Scheduling | EventBridge/Glue Trigger/Step Functions configuration |
 | Monitoring | CloudWatch metrics and error alerting |
 | Dependency list | JAR versions, pip packages, or Maven coordinates |
@@ -387,13 +387,13 @@ Run `/iceberg-multi-region` and provide:
 3. Tables to replicate
 4. Tech stack for the repointing utility (Python or Java)
 5. Sync frequency (after every commit, hourly, daily)
-6. Infrastructure provisioning tool (CloudFormation, CDK, Terraform)
+6. Infrastructure provisioning tool (Terraform is the platform default; CDK supported; CloudFormation is not used)
 
 The skill generates:
 
 | Component | Description |
 |---|---|
-| S3 CRR CloudFormation | Replication role, bucket config, warehouse prefix filtering |
+| S3 CRR Terraform | Replication role, bucket config, warehouse prefix filtering |
 | Metadata repointing utility | Python or Java class that rewrites all 3 metadata layers |
 | Glue Catalog registration | Code to register the table in the target region's Glue Catalog |
 | Sync automation | EventBridge + Lambda trigger (event-driven or scheduled) |
@@ -585,7 +585,7 @@ Subagents are specialized agents used internally by skills or invoked directly b
 **Severity levels:** CRITICAL (runtime failure), HIGH (data/performance issues), MEDIUM (best practice violation), LOW (style/optimization)
 
 ### `iceberg-multi-region-planner`
-**When it runs:** When `/iceberg-multi-region` is invoked.
+**When it runs:** Invoked by `iceberg-orchestrator` during Phase 3b (architecture design), BEFORE the `/iceberg-multi-region` skill generates code. Produces the architecture decisions (pattern, sync strategy, failover runbook) that the skill then consumes to emit Terraform + Lambda code. Can also be invoked standalone when a producer needs only the architecture plan.
 
 **What it produces:**
 - Architecture design (Active-Passive or Active-Active Reads pattern)

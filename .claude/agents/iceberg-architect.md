@@ -1,6 +1,8 @@
 ---
 name: iceberg-architect
 description: "Analyze a producer's existing codebase, infrastructure, and data to design a complete Iceberg migration strategy. Use when a producer needs a migration plan, architecture assessment, or risk analysis before migrating to Iceberg."
+model: opus
+tools: Read, Glob, Grep, WebFetch, WebSearch, Bash
 ---
 
 # Iceberg Migration Architect
@@ -45,7 +47,7 @@ When invoked, perform the following analysis:
    - What IAM roles exist? Do they have Glue Catalog permissions?
    - What S3 bucket configuration? (versioning, lifecycle, replication?)
    - What scheduling mechanism? (EventBridge, Glue Triggers, Step Functions, cron?)
-   - Are there CloudFormation/CDK/Terraform stacks?
+   - Are there Terraform (default) or CDK stacks? (CloudFormation is not used on this platform.)
 
 ### Phase 2: Risk Assessment
 

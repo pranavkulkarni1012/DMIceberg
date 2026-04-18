@@ -1,12 +1,13 @@
 ---
 description: "Setup multi-region resilience for Iceberg tables: S3 replication, metadata repointing, cross-region Glue Catalog registration. Use when a producer needs disaster recovery or multi-region read access for their Iceberg tables. Cross-region S3 access and Multi-Region Access Points are NOT allowed."
-user_invocable: true
 ---
 
 # Iceberg Multi-Region Resilience
 
 ## Goal
 Generate infrastructure and utility code to enable multi-region resilience for Iceberg tables. Since cross-region S3 access and Multi-Region Access Points are NOT allowed, this requires data replication, metadata repointing, and independent catalog registration in each region.
+
+> **Scope of this skill vs. the `iceberg-multi-region-planner` agent:** this skill produces *the concrete code and Terraform* a producer can deploy for a single, well-defined multi-region setup. The planner agent is a step earlier — it does *requirements elicitation, pattern selection (active-passive vs active-active reads), RPO/RTO trade-off analysis, cost estimation, and the failover runbook*. Invoke the planner when the producer hasn't yet decided on the architecture; invoke this skill once they have. During orchestrated onboarding the orchestrator spawns the planner first, then this skill uses the planner's decisions as its inputs.
 
 ## CRITICAL CONSTRAINTS
 - **Cross-region S3 access is NOT allowed** - workloads in region B cannot read S3 in region A
@@ -50,7 +51,7 @@ Ask the producer (if not already provided):
 3. **Tables to replicate**: database.table names
 4. **Tech stack for repointing utility**: Python (Lambda/ECS) or Java (Lambda/ECS)?
 5. **Sync frequency**: How often should metadata be synced? (after every commit, hourly, daily?)
-6. **Infrastructure provisioning**: CloudFormation, CDK, Terraform, or manual?
+6. **Infrastructure provisioning**: Terraform (default), CDK, or manual? (CloudFormation is not used on this platform.)
 7. **Current S3 versioning status**: Required for CRR
 8. **Target region usage**: Read-only failover? Active-active? Read replicas?
 
@@ -58,87 +59,159 @@ Ask the producer (if not already provided):
 
 ### 2.1 S3 Cross-Region Replication (CRR)
 
-**CloudFormation template:**
-```yaml
-AWSTemplateFormatVersion: '2010-09-09'
-Description: S3 CRR for Iceberg multi-region resilience
+**Terraform (CloudFormation is not used on this platform):**
 
-Parameters:
-  SourceBucketName:
-    Type: String
-  TargetBucketName:
-    Type: String
-  TargetRegion:
-    Type: String
-  WarehousePrefix:
-    Type: String
-    Default: 'warehouse/'
+```hcl
+variable "source_bucket_name" { type = string }
+variable "target_bucket_name" { type = string }
+variable "source_region"      { type = string }
+variable "target_region"      { type = string }
+variable "warehouse_prefix"   { type = string  default = "warehouse/" }
+# Optional: SSE-KMS key ARNs. Leave null if buckets use SSE-S3.
+variable "source_kms_key_arn" { type = string  default = null }
+variable "target_kms_key_arn" { type = string  default = null }
 
-Resources:
-  ReplicationRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: s3.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: S3ReplicationPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:GetReplicationConfiguration
-                  - s3:ListBucket
-                Resource: !Sub 'arn:aws:s3:::${SourceBucketName}'
-              - Effect: Allow
-                Action:
-                  - s3:GetObjectVersionForReplication
-                  - s3:GetObjectVersionAcl
-                  - s3:GetObjectVersionTagging
-                Resource: !Sub 'arn:aws:s3:::${SourceBucketName}/${WarehousePrefix}*'
-              - Effect: Allow
-                Action:
-                  - s3:ReplicateObject
-                  - s3:ReplicateDelete
-                  - s3:ReplicateTags
-                Resource: !Sub 'arn:aws:s3:::${TargetBucketName}/${WarehousePrefix}*'
+# Providers: one per region. The source bucket + its replication config and the
+# replication IAM role live in the source region; the target bucket in the target region.
+provider "aws" {
+  alias  = "source"
+  region = var.source_region
+}
+provider "aws" {
+  alias  = "target"
+  region = var.target_region
+}
 
-  SourceBucketReplicationConfig:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Ref SourceBucketName
-      VersioningConfiguration:
-        Status: Enabled
-      ReplicationConfiguration:
-        Role: !GetAtt ReplicationRole.Arn
-        Rules:
-          - Id: IcebergReplication
-            Status: Enabled
-            Prefix: !Ref WarehousePrefix
-            Destination:
-              Bucket: !Sub 'arn:aws:s3:::${TargetBucketName}'
-              StorageClass: STANDARD
-            DeleteMarkerReplication:
-              Status: Disabled  # CRITICAL: Keep Disabled for Iceberg - source-side maintenance (expire snapshots, orphan cleanup) must NOT cascade deletes to the DR copy
+# --- Target bucket (DR copy) ---
+resource "aws_s3_bucket" "target" {
+  provider = aws.target
+  bucket   = var.target_bucket_name
+}
 
-  TargetBucket:
-    Type: AWS::S3::Bucket
-    Condition: CreateTargetBucket
-    Properties:
-      BucketName: !Ref TargetBucketName
-      VersioningConfiguration:
-        Status: Enabled
+resource "aws_s3_bucket_versioning" "target" {
+  provider = aws.target
+  bucket   = aws_s3_bucket.target.id
+  versioning_configuration { status = "Enabled" }
+}
+
+# --- Versioning on source (required for CRR) ---
+resource "aws_s3_bucket_versioning" "source" {
+  provider = aws.source
+  bucket   = var.source_bucket_name
+  versioning_configuration { status = "Enabled" }
+}
+
+# --- Replication role (S3 assumes this to copy objects cross-region) ---
+resource "aws_iam_role" "replication" {
+  provider = aws.source
+  name     = "${var.source_bucket_name}-crr-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "s3.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "replication" {
+  provider = aws.source
+  role     = aws_iam_role.replication.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = concat(
+      [
+        {
+          Effect = "Allow"
+          Action = [
+            "s3:GetReplicationConfiguration",
+            "s3:ListBucket",
+            "s3:GetObjectVersionForReplication",
+            "s3:GetObjectVersionAcl",
+            "s3:GetObjectVersionTagging"
+          ]
+          Resource = [
+            "arn:aws:s3:::${var.source_bucket_name}",
+            "arn:aws:s3:::${var.source_bucket_name}/${var.warehouse_prefix}*"
+          ]
+        },
+        {
+          Effect = "Allow"
+          Action = [
+            "s3:ReplicateObject",
+            "s3:ReplicateDelete",
+            "s3:ReplicateTags",
+            "s3:ObjectOwnerOverrideToBucketOwner"
+          ]
+          Resource = "arn:aws:s3:::${var.target_bucket_name}/${var.warehouse_prefix}*"
+        }
+      ],
+      # If source objects are SSE-KMS, S3 replication needs Decrypt on the source key
+      # and Encrypt/GenerateDataKey on the target key.
+      var.source_kms_key_arn == null ? [] : [{
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = var.source_kms_key_arn
+      }],
+      var.target_kms_key_arn == null ? [] : [{
+        Effect   = "Allow"
+        Action   = ["kms:Encrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
+        Resource = var.target_kms_key_arn
+      }]
+    )
+  })
+}
+
+# --- Replication config on source bucket ---
+resource "aws_s3_bucket_replication_configuration" "iceberg" {
+  provider = aws.source
+  # Replication requires versioning enabled on the source first.
+  depends_on = [aws_s3_bucket_versioning.source, aws_s3_bucket_versioning.target]
+  role       = aws_iam_role.replication.arn
+  bucket     = var.source_bucket_name
+
+  rule {
+    id     = "IcebergReplication"
+    status = "Enabled"
+
+    filter { prefix = var.warehouse_prefix }
+
+    # CRITICAL: keep DeleteMarkerReplication DISABLED for Iceberg.
+    # Source-side maintenance (expire_snapshots, remove_orphan_files, rewrite_data_files)
+    # issues deletes on obsolete files. Cascading those deletes to the DR copy would
+    # prune files the DR still needs for older snapshots, breaking replica independence.
+    delete_marker_replication { status = "Disabled" }
+
+    destination {
+      bucket        = "arn:aws:s3:::${var.target_bucket_name}"
+      storage_class = "STANDARD"
+
+      # Re-encrypt replicated objects with the target-region KMS key when applicable.
+      dynamic "encryption_configuration" {
+        for_each = var.target_kms_key_arn == null ? [] : [var.target_kms_key_arn]
+        content { replica_kms_key_id = encryption_configuration.value }
+      }
+    }
+
+    # Re-encrypt the CRR source selection only if source is SSE-KMS.
+    dynamic "source_selection_criteria" {
+      for_each = var.source_kms_key_arn == null ? [] : [1]
+      content {
+        sse_kms_encrypted_objects { status = "Enabled" }
+      }
+    }
+  }
+}
 ```
 
 ### 2.2 Target Region Glue Catalog Setup
 
+Use Iceberg's catalog `register_table` API (via PyIceberg) rather than raw `boto3.client('glue').create_table`. `register_table` writes the exact parameter set Iceberg engines require (`table_type=ICEBERG`, `metadata_location`, `previous_metadata_location`, schema columns, partition info) directly from the metadata.json. A hand-crafted `StorageDescriptor` with an empty `Columns: []` list is valid for Iceberg-aware readers but is not a contract — producers have hit edge cases where Athena DDL or external catalogs reject such entries. Prefer the Iceberg API so the target-region registration is byte-for-byte what the source-region registration would be.
+
 ```python
-import boto3
+from pyiceberg.catalog.glue import GlueCatalog
+from pyiceberg.exceptions import NoSuchTableError, TableAlreadyExistsError
 
 def register_iceberg_table_in_target_catalog(
     target_region: str,
@@ -146,46 +219,77 @@ def register_iceberg_table_in_target_catalog(
     table_name: str,
     target_bucket: str,
     warehouse_path: str,
-    repointed_metadata_location: str
+    repointed_metadata_location: str,
 ):
-    """Register an Iceberg table in the target region's Glue Catalog."""
-    glue = boto3.client('glue', region_name=target_region)
-
-    # Ensure database exists
-    try:
-        glue.get_database(Name=database)
-    except glue.exceptions.EntityNotFoundException:
-        glue.create_database(
-            DatabaseInput={'Name': database, 'Description': f'Iceberg replica from source region'}
-        )
-
-    # Register Iceberg table pointing to repointed metadata
-    table_input = {
-        'Name': table_name,
-        'TableType': 'EXTERNAL_TABLE',
-        'Parameters': {
-            'table_type': 'ICEBERG',
-            'metadata_location': repointed_metadata_location,
-            'format-version': '2'
+    """Register an Iceberg table in the target region's Glue Catalog using Iceberg's register_table API."""
+    catalog = GlueCatalog(
+        "target",
+        **{
+            "warehouse": f"s3://{target_bucket}/{warehouse_path}/",
+            # Canonical PyIceberg keys (both required: Glue for catalog ops, S3 for FileIO):
+            "glue.region": target_region,
+            "s3.region": target_region,
         },
-        'StorageDescriptor': {
-            'Location': f's3://{target_bucket}/{warehouse_path}/{database}/{table_name}',
-            'Columns': [],  # Iceberg manages schema via metadata
-            'InputFormat': 'org.apache.hadoop.mapred.FileInputFormat',
-            'OutputFormat': 'org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat',
-            'SerdeInfo': {
-                'SerializationLibrary': 'org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe'
-            }
-        }
-    }
+    )
 
+    # Ensure database exists (idempotent)
     try:
-        glue.get_table(DatabaseName=database, Name=table_name)
-        glue.update_table(DatabaseName=database, TableInput=table_input)
-        print(f"Updated table {database}.{table_name} in {target_region}")
-    except glue.exceptions.EntityNotFoundException:
-        glue.create_table(DatabaseName=database, TableInput=table_input)
-        print(f"Created table {database}.{table_name} in {target_region}")
+        catalog.create_namespace(database)
+    except Exception:
+        # Namespace already exists; fine.
+        pass
+
+    identifier = (database, table_name)
+    try:
+        # Fresh registration: catalog reads metadata.json and builds the correct Glue TableInput.
+        catalog.register_table(identifier, repointed_metadata_location)
+        print(f"Registered {database}.{table_name} in {target_region}")
+    except TableAlreadyExistsError:
+        # Table is already registered -- advance its metadata pointer to the new repointed location.
+        # PyIceberg does not yet expose a pure "move pointer" API on GlueCatalog, so drop + re-register.
+        # drop_table(purge=False) keeps the underlying S3 objects intact; only the catalog entry is removed.
+        catalog.drop_table(identifier, purge=False)
+        catalog.register_table(identifier, repointed_metadata_location)
+        print(f"Re-registered {database}.{table_name} in {target_region} at new metadata location")
+```
+
+**Java equivalent** (uses the Iceberg `GlueCatalog` Java API, not the AWS SDK `GlueClient` directly):
+
+```java
+import org.apache.iceberg.aws.glue.GlueCatalog;
+import org.apache.iceberg.catalog.Namespace;
+import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.exceptions.AlreadyExistsException;
+import org.apache.iceberg.exceptions.NoSuchNamespaceException;
+
+import java.util.Map;
+
+public static void registerInTargetCatalog(
+    String targetRegion, String database, String tableName,
+    String targetBucket, String warehousePath, String repointedMetadataLocation
+) {
+    GlueCatalog catalog = new GlueCatalog();
+    catalog.initialize("target", Map.of(
+        "warehouse",   "s3://" + targetBucket + "/" + warehousePath + "/",
+        "glue.region", targetRegion,
+        "s3.region",   targetRegion,
+        "io-impl",     "org.apache.iceberg.aws.s3.S3FileIO"
+    ));
+
+    Namespace ns = Namespace.of(database);
+    try {
+        catalog.createNamespace(ns);
+    } catch (AlreadyExistsException ignored) { }
+
+    TableIdentifier id = TableIdentifier.of(database, tableName);
+    try {
+        catalog.registerTable(id, repointedMetadataLocation);
+    } catch (AlreadyExistsException e) {
+        // Advance metadata pointer: drop (purge=false preserves S3 files) + re-register.
+        catalog.dropTable(id, false);
+        catalog.registerTable(id, repointedMetadataLocation);
+    }
+}
 ```
 
 ## Step 3: Metadata Repointing Utility
@@ -208,9 +312,11 @@ data/
 ```
 
 **What needs repointing:**
-1. `metadata.json` (JSON) - references to manifest-list paths
+1. `metadata.json` (JSON) - references to manifest-list paths, previous-metadata-log entries, and `statistics-files` (Puffin) locations if present
 2. `snap-*.avro` manifest-list files (Avro) - references to manifest paths
-3. `*-m*.avro` manifest files (Avro) - references to data file paths
+3. `*-m*.avro` manifest files (Avro) - references to data file paths and delete file paths
+
+**Important**: Iceberg format-version 2 can include `statistics-files` entries in `metadata.json` that point to Puffin files (e.g., `s3://bucket/.../abc.stats`). The whole-string replace on the JSON content catches these; do not strip them. If you parse and rebuild selectively, preserve the `statistics-files` array.
 
 ### Python Repointing Utility (Lambda / ECS)
 
@@ -281,6 +387,7 @@ class IcebergMetadataRepointer:
         """
         Repoint an Avro file (manifest-list or manifest).
         Reads Avro records, replaces paths, writes new Avro file.
+        Preserves the original codec (deflate/snappy/null) to avoid file-size bloat.
         Returns the S3 key of the repointed file.
         """
         # Read Avro file from target bucket
@@ -290,6 +397,8 @@ class IcebergMetadataRepointer:
         # Parse Avro
         reader = fastavro.reader(io.BytesIO(avro_bytes))
         schema = reader.writer_schema
+        # Preserve original codec; fastavro exposes it via reader.codec
+        codec = getattr(reader, 'codec', 'deflate') or 'deflate'
         records = list(reader)
 
         # Replace paths in all string fields recursively
@@ -297,9 +406,9 @@ class IcebergMetadataRepointer:
         for record in records:
             repointed_records.append(self._repoint_record(record))
 
-        # Write repointed Avro
+        # Write repointed Avro with the original codec
         output = io.BytesIO()
-        fastavro.writer(output, schema, repointed_records)
+        fastavro.writer(output, schema, repointed_records, codec=codec)
         output.seek(0)
 
         repointed_key = avro_key.replace('.avro', '.repointed.avro')
@@ -417,19 +526,22 @@ class IcebergMetadataRepointer:
         return final_location
 
     def _find_latest_metadata(self, metadata_path: str) -> Optional[str]:
-        """Find the latest metadata.json file in the metadata directory."""
+        """
+        Find the latest metadata.json file in the metadata directory.
+        Sorts by S3 LastModified (authoritative) rather than filename lexical order,
+        because legacy v1/v2/v10 naming sorts v10 < v2 lexically and breaks sort-by-name.
+        """
         paginator = self.s3.get_paginator('list_objects_v2')
         metadata_files = []
         for page in paginator.paginate(Bucket=self.target_bucket, Prefix=metadata_path):
             for obj in page.get('Contents', []):
                 key = obj['Key']
                 if key.endswith('.metadata.json') and '.repointed.' not in key and '.multi-region.' not in key:
-                    metadata_files.append(key)
+                    metadata_files.append((obj['LastModified'], key))
         if not metadata_files:
             return None
-        # Sort by version number (v1, v2, ...) or by last modified
-        metadata_files.sort()
-        return metadata_files[-1]
+        metadata_files.sort(key=lambda t: t[0])
+        return metadata_files[-1][1]
 
     def _s3_uri_to_key(self, s3_uri: str) -> Optional[str]:
         """Convert s3://bucket/key to just the key, handling both source and target bucket."""
@@ -458,42 +570,16 @@ def repoint_and_register(
         database, table_name, warehouse_prefix
     )
 
-    # Step 2: Register in target region's Glue Catalog
-    glue = boto3.client('glue', region_name=target_region)
-
-    # Ensure database exists
-    try:
-        glue.get_database(Name=database)
-    except glue.exceptions.EntityNotFoundException:
-        glue.create_database(DatabaseInput={
-            'Name': database,
-            'Description': f'Iceberg multi-region replica'
-        })
-
-    table_input = {
-        'Name': table_name,
-        'TableType': 'EXTERNAL_TABLE',
-        'Parameters': {
-            'table_type': 'ICEBERG',
-            'metadata_location': repointed_metadata_location,
-            'format-version': '2'
-        },
-        'StorageDescriptor': {
-            'Location': f's3://{target_bucket}/{warehouse_prefix}/{database}/{table_name}',
-            'Columns': [],
-            'InputFormat': 'org.apache.hadoop.mapred.FileInputFormat',
-            'OutputFormat': 'org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat',
-            'SerdeInfo': {
-                'SerializationLibrary': 'org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe'
-            }
-        }
-    }
-
-    try:
-        glue.get_table(DatabaseName=database, Name=table_name)
-        glue.update_table(DatabaseName=database, TableInput=table_input)
-    except glue.exceptions.EntityNotFoundException:
-        glue.create_table(DatabaseName=database, TableInput=table_input)
+    # Step 2: Register (or re-register) in target region's Glue Catalog
+    # using Iceberg's register_table API -- see Section 2.2 for the full helper.
+    register_iceberg_table_in_target_catalog(
+        target_region=target_region,
+        database=database,
+        table_name=table_name,
+        target_bucket=target_bucket,
+        warehouse_path=warehouse_prefix,
+        repointed_metadata_location=repointed_metadata_location,
+    )
 
     print(f"Table {database}.{table_name} registered in {target_region} Glue Catalog")
     print(f"Metadata location: {repointed_metadata_location}")
@@ -596,53 +682,67 @@ public class IcebergMetadataRepointer {
     }
 
     private void repointAvroFiles(String metadataPath) {
-        // List all .avro files in metadata directory
+        // List ALL .avro files in the metadata directory, paginating through every page.
+        // listObjectsV2 returns at most 1000 keys; large tables (many snapshots × manifests)
+        // blow past that easily. Missing a manifest file means the DR table is broken for
+        // any snapshot whose manifests weren't repointed -- silent data-loss on failover.
         ListObjectsV2Request listReq = ListObjectsV2Request.builder()
             .bucket(targetBucket).prefix(metadataPath + "/").build();
-        ListObjectsV2Response listResp = s3.listObjectsV2(listReq);
 
-        for (S3Object obj : listResp.contents()) {
-            String key = obj.key();
-            if (!key.endsWith(".avro") || key.contains(".repointed.")) continue;
+        for (ListObjectsV2Response page : s3.listObjectsV2Paginator(listReq)) {
+            for (S3Object obj : page.contents()) {
+                String key = obj.key();
+                if (!key.endsWith(".avro") || key.contains(".repointed.")) continue;
 
-            // Read Avro file from target bucket
-            byte[] avroBytes = s3.getObject(
-                GetObjectRequest.builder().bucket(targetBucket).key(key).build()
-            ).readAllBytes();
+                // Read Avro file from target bucket
+                byte[] avroBytes = s3.getObject(
+                    GetObjectRequest.builder().bucket(targetBucket).key(key).build()
+                ).readAllBytes();
 
-            // Parse Avro records, replace source paths with target paths
-            GenericDatumReader<GenericRecord> reader = new GenericDatumReader<>();
-            DataFileReader<GenericRecord> dataReader = new DataFileReader<>(
-                new SeekableByteArrayInput(avroBytes), reader
-            );
-            org.apache.avro.Schema avroSchema = dataReader.getSchema();
-            List<GenericRecord> records = new ArrayList<>();
-            while (dataReader.hasNext()) {
-                records.add(dataReader.next());
+                // Parse Avro records, replace source paths with target paths
+                GenericDatumReader<GenericRecord> reader = new GenericDatumReader<>();
+                DataFileReader<GenericRecord> dataReader = new DataFileReader<>(
+                    new SeekableByteArrayInput(avroBytes), reader
+                );
+                org.apache.avro.Schema avroSchema = dataReader.getSchema();
+                // Preserve the source file's compression codec. DataFileWriter defaults to null
+                // (uncompressed), which would inflate manifest files several-fold and diverges
+                // from what Iceberg writes natively (deflate). The DataFileReader exposes the
+                // codec via the reserved avro.codec metadata field.
+                String codecName = dataReader.getMetaString("avro.codec");
+                if (codecName == null || codecName.isEmpty()) {
+                    codecName = "deflate";
+                }
+
+                List<GenericRecord> records = new ArrayList<>();
+                while (dataReader.hasNext()) {
+                    records.add(dataReader.next());
+                }
+                dataReader.close();
+
+                // Repoint string fields containing source bucket paths
+                List<GenericRecord> repointed = records.stream()
+                    .map(this::repointAvroRecord)
+                    .collect(Collectors.toList());
+
+                // Write repointed Avro with the original codec.
+                ByteArrayOutputStream output = new ByteArrayOutputStream();
+                GenericDatumWriter<GenericRecord> writer = new GenericDatumWriter<>(avroSchema);
+                DataFileWriter<GenericRecord> dataWriter = new DataFileWriter<>(writer);
+                dataWriter.setCodec(org.apache.avro.file.CodecFactory.fromString(codecName));
+                dataWriter.create(avroSchema, output);
+                for (GenericRecord rec : repointed) {
+                    dataWriter.append(rec);
+                }
+                dataWriter.close();
+
+                // Upload repointed file
+                String repointedKey = key.replace(".avro", ".repointed.avro");
+                s3.putObject(
+                    PutObjectRequest.builder().bucket(targetBucket).key(repointedKey).build(),
+                    RequestBody.fromBytes(output.toByteArray())
+                );
             }
-            dataReader.close();
-
-            // Repoint string fields containing source bucket paths
-            List<GenericRecord> repointed = records.stream()
-                .map(this::repointAvroRecord)
-                .collect(Collectors.toList());
-
-            // Write repointed Avro
-            ByteArrayOutputStream output = new ByteArrayOutputStream();
-            GenericDatumWriter<GenericRecord> writer = new GenericDatumWriter<>(avroSchema);
-            DataFileWriter<GenericRecord> dataWriter = new DataFileWriter<>(writer);
-            dataWriter.create(avroSchema, output);
-            for (GenericRecord rec : repointed) {
-                dataWriter.append(rec);
-            }
-            dataWriter.close();
-
-            // Upload repointed file
-            String repointedKey = key.replace(".avro", ".repointed.avro");
-            s3.putObject(
-                PutObjectRequest.builder().bucket(targetBucket).key(repointedKey).build(),
-                RequestBody.fromBytes(output.toByteArray())
-            );
         }
     }
 
@@ -666,51 +766,38 @@ public class IcebergMetadataRepointer {
         String database, String tableName, String bucket,
         String warehousePrefix, String metadataLocation
     ) {
-        // Ensure database exists
-        try {
-            glue.getDatabase(GetDatabaseRequest.builder().name(database).build());
-        } catch (EntityNotFoundException e) {
-            glue.createDatabase(CreateDatabaseRequest.builder()
-                .databaseInput(DatabaseInput.builder()
-                    .name(database)
-                    .description("Iceberg multi-region replica")
-                    .build())
-                .build());
-        }
+        // Use Iceberg's GlueCatalog.registerTable -- it reads metadata.json and writes the
+        // correct Glue TableInput (ICEBERG parameters, schema columns, partition spec).
+        // This avoids hand-crafting StorageDescriptor.Columns = [] which is not a stable contract.
+        org.apache.iceberg.aws.glue.GlueCatalog icebergCatalog = new org.apache.iceberg.aws.glue.GlueCatalog();
+        icebergCatalog.initialize("target", Map.of(
+            "warehouse",   "s3://" + bucket + "/" + warehousePrefix + "/",
+            "glue.region", Region.of(glue.serviceClientConfiguration().region().id()).id(),
+            "s3.region",   Region.of(glue.serviceClientConfiguration().region().id()).id(),
+            "io-impl",     "org.apache.iceberg.aws.s3.S3FileIO"
+        ));
 
-        // Create or update table
-        TableInput tableInput = TableInput.builder()
-            .name(tableName)
-            .tableType("EXTERNAL_TABLE")
-            .parameters(Map.of(
-                "table_type", "ICEBERG",
-                "metadata_location", metadataLocation,
-                "format-version", "2"
-            ))
-            .storageDescriptor(StorageDescriptor.builder()
-                .location("s3://" + bucket + "/" + warehousePrefix + "/" + database + "/" + tableName)
-                .inputFormat("org.apache.hadoop.mapred.FileInputFormat")
-                .outputFormat("org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat")
-                .serdeInfo(SerDeInfo.builder()
-                    .serializationLibrary("org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe")
-                    .build())
-                .build())
-            .build();
-
+        org.apache.iceberg.catalog.Namespace ns = org.apache.iceberg.catalog.Namespace.of(database);
         try {
-            glue.getTable(GetTableRequest.builder()
-                .databaseName(database).name(tableName).build());
-            glue.updateTable(UpdateTableRequest.builder()
-                .databaseName(database).tableInput(tableInput).build());
-        } catch (EntityNotFoundException e) {
-            glue.createTable(CreateTableRequest.builder()
-                .databaseName(database).tableInput(tableInput).build());
+            icebergCatalog.createNamespace(ns);
+        } catch (org.apache.iceberg.exceptions.AlreadyExistsException ignored) { }
+
+        org.apache.iceberg.catalog.TableIdentifier id =
+            org.apache.iceberg.catalog.TableIdentifier.of(database, tableName);
+        try {
+            icebergCatalog.registerTable(id, metadataLocation);
+        } catch (org.apache.iceberg.exceptions.AlreadyExistsException e) {
+            // Advance pointer: drop (purge=false keeps S3 files) + re-register at new metadata location.
+            icebergCatalog.dropTable(id, false);
+            icebergCatalog.registerTable(id, metadataLocation);
         }
     }
 
     // ... helper methods: readS3String, writeS3String, findLatestMetadata
 }
 ```
+
+> Maven: add `iceberg-aws-bundle` (or `iceberg-aws` + `iceberg-core`) as shown in the pipeline skill, so `org.apache.iceberg.aws.glue.GlueCatalog` is on the classpath.
 
 ## Step 4: Sync Automation
 
@@ -722,17 +809,39 @@ Lambda function triggered by S3 events or on a schedule to sync
 Iceberg metadata to the target region after new commits.
 """
 
-import boto3
+import os
 import json
 from iceberg_repointer import IcebergMetadataRepointer  # the utility above
 
+
+def _triggering_key(event):
+    """Extract the S3 object key from an EventBridge S3 Object Created event, if present.
+    Scheduled (EventBridge Scheduler) invocations have no such key and return None."""
+    detail = event.get('detail') or {}
+    obj = detail.get('object') or {}
+    return obj.get('key')
+
+
 def handler(event, context):
+    # Re-entry guard: the S3 Event rule filters on suffix ".metadata.json", which also
+    # matches our own output files ".repointed.metadata.json" and ".multi-region.metadata.json".
+    # Without this guard, every repointing run re-triggers the rule and we spin in a loop.
+    key = _triggering_key(event)
+    if key and ('.repointed.' in key or '.multi-region.' in key):
+        return {
+            'statusCode': 200,
+            'body': json.dumps({'message': f'Skipped repointer-generated key: {key}'})
+        }
+
     config = {
-        'source_bucket': event.get('source_bucket') or os.environ['SOURCE_BUCKET'],
-        'target_bucket': event.get('target_bucket') or os.environ['TARGET_BUCKET'],
-        'target_region': event.get('target_region') or os.environ['TARGET_REGION'],
-        'database': event.get('database') or os.environ['DATABASE'],
-        'table_name': event.get('table_name') or os.environ['TABLE_NAME'],
+        'source_bucket':    event.get('source_bucket')    or os.environ['SOURCE_BUCKET'],
+        'target_bucket':    event.get('target_bucket')    or os.environ['TARGET_BUCKET'],
+        'target_region':    event.get('target_region')    or os.environ['TARGET_REGION'],
+        'database':         event.get('database')         or os.environ['DATABASE'],
+        'table_name':       event.get('table_name')       or os.environ['TABLE_NAME'],
+        # warehouse_prefix must be forwarded -- repoint_table defaults to "warehouse",
+        # but producers may use "iceberg/" or a bucket-subpath, so don't rely on the default.
+        'warehouse_prefix': event.get('warehouse_prefix') or os.environ.get('WAREHOUSE_PREFIX', 'warehouse'),
     }
 
     repointer = IcebergMetadataRepointer(
@@ -743,7 +852,8 @@ def handler(event, context):
 
     metadata_location = repointer.repoint_table(
         config['database'],
-        config['table_name']
+        config['table_name'],
+        warehouse_prefix=config['warehouse_prefix'],
     )
 
     return {
@@ -755,48 +865,210 @@ def handler(event, context):
     }
 ```
 
-### S3 Event Notification Trigger
+**Make sure the Lambda Terraform env vars and the Scheduler input both include `warehouse_prefix` / `WAREHOUSE_PREFIX`** -- the scheduled-sync target `input` block (below) already adds it, and the Lambda's `environment.variables` in the `aws_lambda_function.repointing` resource should set `WAREHOUSE_PREFIX = var.warehouse_prefix` so the event-driven path resolves correctly when no explicit input is passed.
 
-```yaml
-# CloudFormation: trigger repointing when new metadata.json arrives via CRR
-MetadataEventRule:
-  Type: AWS::Events::Rule
-  Properties:
-    EventPattern:
-      source: ["aws.s3"]
-      detail-type: ["Object Created"]
-      detail:
-        bucket:
-          name: [!Ref TargetBucketName]
-        object:
-          key:
-            - prefix: !Sub "${WarehousePrefix}/"
-            - suffix: ".metadata.json"
-    Targets:
-      - Arn: !GetAtt RepointingLambda.Arn
-        Id: RepointMetadata
+### S3 Event Notification Trigger (Terraform)
+
+Fire the repointing Lambda as soon as a new `metadata.json` shows up in the target bucket (via CRR). Requires the target bucket to have EventBridge notifications enabled.
+
+```hcl
+# Enable EventBridge notifications on the target bucket (one-time, target region).
+resource "aws_s3_bucket_notification" "target_eventbridge" {
+  provider    = aws.target
+  bucket      = aws_s3_bucket.target.id
+  eventbridge = true
+}
+
+# Rule: match Object Created events for *.metadata.json under the warehouse prefix.
+resource "aws_cloudwatch_event_rule" "metadata_created" {
+  provider    = aws.target
+  name        = "iceberg-metadata-created-${var.target_bucket_name}"
+  description = "Trigger repointing when new Iceberg metadata.json arrives via CRR"
+  event_pattern = jsonencode({
+    source      = ["aws.s3"]
+    detail-type = ["Object Created"]
+    detail = {
+      bucket = { name = [var.target_bucket_name] }
+      object = {
+        key = [{
+          prefix = var.warehouse_prefix
+          suffix = ".metadata.json"
+        }]
+      }
+    }
+  })
+}
+
+resource "aws_cloudwatch_event_target" "repoint_lambda" {
+  provider  = aws.target
+  rule      = aws_cloudwatch_event_rule.metadata_created.name
+  target_id = "RepointMetadata"
+  arn       = aws_lambda_function.repointing.arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_rule" {
+  provider      = aws.target
+  statement_id  = "AllowEventBridgeInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.repointing.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.metadata_created.arn
+}
 ```
 
-### Scheduled Sync (EventBridge Scheduler)
+> The event rule fires once per replicated metadata.json. If CRR happens to replicate several metadata versions in close succession (e.g., a burst of commits), each invocation still calls `_find_latest_metadata` which picks the newest by S3 LastModified — so multiple rapid fires converge on the latest snapshot.
 
-```yaml
-ScheduledSyncRule:
-  Type: AWS::Scheduler::Schedule
-  Properties:
-    ScheduleExpression: "rate(1 hour)"
-    FlexibleTimeWindow:
-      Mode: "OFF"
-    Target:
-      Arn: !GetAtt RepointingLambda.Arn
-      Input: !Sub |
-        {
-          "source_bucket": "${SourceBucketName}",
-          "target_bucket": "${TargetBucketName}",
-          "target_region": "${TargetRegion}",
-          "database": "${Database}",
-          "table_name": "${TableName}"
-        }
+### Scheduled Sync (EventBridge Scheduler, Terraform)
+
+Use this instead of (or alongside) the event-driven trigger when RPO tolerates minutes-to-hours and you want a steady, predictable cadence.
+
+```hcl
+resource "aws_iam_role" "scheduler" {
+  provider = aws.target
+  name     = "iceberg-repoint-scheduler-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "scheduler.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "scheduler_invoke_lambda" {
+  provider = aws.target
+  role     = aws_iam_role.scheduler.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "lambda:InvokeFunction"
+      Resource = aws_lambda_function.repointing.arn
+    }]
+  })
+}
+
+resource "aws_scheduler_schedule" "hourly_repoint" {
+  provider                     = aws.target
+  name                         = "iceberg-repoint-${var.database}-${var.table_name}"
+  schedule_expression          = "rate(1 hour)"
+  schedule_expression_timezone = "UTC"
+  flexible_time_window { mode = "OFF" }
+
+  target {
+    arn      = aws_lambda_function.repointing.arn
+    role_arn = aws_iam_role.scheduler.arn
+    input = jsonencode({
+      source_bucket    = var.source_bucket_name
+      target_bucket    = var.target_bucket_name
+      target_region    = var.target_region
+      database         = var.database
+      table_name       = var.table_name
+      warehouse_prefix = var.warehouse_prefix
+    })
+  }
+}
 ```
+
+> Both triggers reference `aws_lambda_function.repointing` — the minimal block below is sufficient. For very large tables (>100k manifest entries) where rewriting all manifest Avro files exceeds Lambda's 15-minute ceiling, substitute an ECS Fargate task using the same handler code; the `/iceberg-pipeline` Section 3G ECS skeleton is a drop-in starting point.
+
+**Repointing Lambda (Terraform)**:
+
+```hcl
+resource "aws_lambda_function" "repointing" {
+  function_name = "${var.producer_name}-iceberg-repointing"
+  role          = aws_iam_role.repointing_lambda.arn
+  handler       = "repoint_handler.handler"
+  runtime       = "python3.11"
+  filename      = var.repointing_code_zip_path  # must bundle pyiceberg, fastavro
+  timeout       = 900       # 15 min Lambda max.
+  memory_size   = 3008      # Avro rewrites are CPU/memory heavy.
+  ephemeral_storage { size = 4096 }  # /tmp for Avro buffering.
+  environment {
+    variables = {
+      SOURCE_BUCKET    = var.source_bucket
+      TARGET_BUCKET    = var.target_bucket
+      SOURCE_REGION    = var.source_region
+      TARGET_REGION    = var.target_region
+      DATABASE         = var.database
+      TABLE_NAME       = var.table_name
+      WAREHOUSE_PREFIX = var.warehouse_prefix  # forwarded to repointer; see handler guard
+    }
+  }
+  # Single-writer: only one repointing run may advance the target catalog pointer
+  # at a time. EventBridge bursts from CRR batches MUST NOT be processed in parallel
+  # or the catalog's current metadata_location can regress to an older snapshot.
+  reserved_concurrent_executions = 1
+}
+```
+
+The IAM role (`aws_iam_role.repointing_lambda`) needs: `s3:GetObject` on source bucket, `s3:GetObject`/`s3:PutObject`/`s3:ListBucket`/`s3:DeleteObject` on target bucket, `glue:GetTable`/`glue:UpdateTable`/`glue:CreateTable` in the target region, and `kms:Decrypt`/`kms:GenerateDataKey`/`kms:Encrypt` on any CMK protecting either bucket. Follow the same pattern as `aws_iam_role_policy.maint` in `/iceberg-pipeline` Section 3G, adjusting the bucket ARNs to `source_bucket` (read-only) and `target_bucket` (read-write).
+
+### Orphan cleanup in the target bucket
+
+Each repointing run writes new artifacts into the target bucket that are NOT managed by Iceberg's own maintenance procedures (because they are not referenced by the source-region metadata tree):
+
+1. `*.repointed.avro` — rewritten manifest / manifest-list files from every prior repointing run.
+2. `*.multi-region.metadata.json` — the repointed metadata.json that the target Glue Catalog currently points to, PLUS every superseded version from prior runs.
+3. `*.metadata.json` and `snap-*.avro` / `*-m*.avro` from the source — these are the CRR-replicated originals. Do NOT delete them; they are the immutable inputs each repointing run reads from.
+
+Do NOT run `system.remove_orphan_files` against the target-region table. Iceberg's orphan cleanup considers "orphan" to mean "not referenced by any live snapshot in the current metadata tree," and the `.repointed.avro` files ARE referenced by the current `.multi-region.metadata.json` — so the procedure would leave them alone, while also potentially misidentifying CRR-replicated source metadata files as orphans and deleting them. Both outcomes are wrong for a DR replica.
+
+Use a dedicated cleanup pass instead. Safe rules:
+
+```python
+def cleanup_superseded_repointed_artifacts(
+    s3_client, target_bucket: str, warehouse_prefix: str,
+    database: str, table_name: str, retention_days: int = 7,
+):
+    """
+    Delete *.repointed.avro and *.multi-region.metadata.json files that:
+      - are not the current metadata location in the target Glue Catalog, AND
+      - were last modified more than `retention_days` ago.
+
+    Retaining a window of old repointed versions lets consumers mid-read on an older
+    snapshot still resolve paths; this mirrors Iceberg's standard expire_snapshots grace period.
+    """
+    from datetime import datetime, timedelta, timezone
+    from pyiceberg.catalog.glue import GlueCatalog
+
+    catalog = GlueCatalog("target", **{
+        "warehouse":   f"s3://{target_bucket}/{warehouse_prefix}/",
+        "glue.region": s3_client.meta.region_name,
+        "s3.region":   s3_client.meta.region_name,
+    })
+    current_metadata_location = catalog.load_table((database, table_name)).metadata_location
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+
+    prefix = f"{warehouse_prefix}/{database}/{table_name}/metadata/"
+    paginator = s3_client.get_paginator('list_objects_v2')
+    to_delete = []
+    for page in paginator.paginate(Bucket=target_bucket, Prefix=prefix):
+        for obj in page.get('Contents', []):
+            key = obj['Key']
+            is_repointed_artifact = (
+                key.endswith('.repointed.avro') or
+                '.multi-region.metadata.json' in key
+            )
+            if not is_repointed_artifact:
+                continue
+            full_uri = f"s3://{target_bucket}/{key}"
+            if full_uri == current_metadata_location:
+                continue  # Never delete the currently-registered metadata.
+            if obj['LastModified'] >= cutoff:
+                continue  # Within retention window.
+            to_delete.append({'Key': key})
+
+    # Batch delete (max 1000 keys per request).
+    for i in range(0, len(to_delete), 1000):
+        batch = to_delete[i:i+1000]
+        if batch:
+            s3_client.delete_objects(Bucket=target_bucket, Delete={'Objects': batch})
+    return len(to_delete)
+```
+
+Schedule this as a low-frequency job (e.g., daily EventBridge Scheduler -> Lambda). Keep `retention_days >= source_region_max_snapshot_age_days` so a failover never lands on a snapshot whose repointed manifests were already pruned.
 
 ## Step 5: Monitoring & Validation
 
@@ -808,12 +1080,25 @@ Generate monitoring for:
 4. **Repointing success**: CloudWatch alarms on Lambda errors
 
 ```python
-def validate_multi_region_sync(source_region, target_region, database, table_name, warehouse):
-    """Validate that source and target regions are in sync."""
+def validate_multi_region_sync(source_region, target_region, database, table_name,
+                               source_warehouse, target_warehouse):
+    """Validate that source and target regions are in sync.
+
+    source_warehouse and target_warehouse differ because each region has its own bucket
+    (cross-region S3 is not allowed). Use canonical PyIceberg config keys (glue.region / s3.region).
+    """
     from pyiceberg.catalog.glue import GlueCatalog
 
-    source_catalog = GlueCatalog("source", **{"warehouse": warehouse, "region_name": source_region})
-    target_catalog = GlueCatalog("target", **{"warehouse": warehouse, "region_name": target_region})
+    source_catalog = GlueCatalog("source", **{
+        "warehouse": source_warehouse,
+        "glue.region": source_region,
+        "s3.region":   source_region,
+    })
+    target_catalog = GlueCatalog("target", **{
+        "warehouse": target_warehouse,
+        "glue.region": target_region,
+        "s3.region":   target_region,
+    })
 
     source_table = source_catalog.load_table(f"{database}.{table_name}")
     target_table = target_catalog.load_table(f"{database}.{table_name}")
