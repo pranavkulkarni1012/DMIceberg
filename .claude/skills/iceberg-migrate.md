@@ -1,6 +1,5 @@
 ---
 description: "Migrate existing Parquet or Hive tables to Iceberg format. Use when a producer has existing data in Parquet/Hive and wants to convert to Iceberg, including in-place migration, snapshot-based migration, or CTAS approaches."
-user_invocable: true
 ---
 
 # Parquet/Hive to Iceberg Migration
@@ -29,6 +28,41 @@ Ask the producer (if not already provided):
 5. **Downtime tolerance**: Can writes be paused during migration?
 6. **Schema evolution needs**: Any schema changes during migration?
 7. **Post-migration**: Keep old table as backup? Rename?
+
+### Schema inference from existing Parquet files
+
+When the producer says "infer from data" (or when there's no Hive catalog entry to read), derive the Iceberg schema from a representative Parquet file in S3 before generating DDL. Do NOT hand-translate schemas from source docs — Parquet's type system (INT96 timestamps, logical types, decimal precision) is the authoritative source and the only way to guarantee Iceberg types line up with what the data files actually contain.
+
+**PySpark (Glue/EMR):**
+
+```python
+# Read one Parquet file (or a small partition) and print the inferred Spark schema.
+# Use this output to hand-write the Iceberg CREATE TABLE column list.
+sample_df = spark.read.parquet("s3://{source_bucket}/{source_prefix}/").limit(0)
+print(sample_df.schema.treeString())
+# For a ready-to-paste DDL, use CTAS -- Spark will translate the schema for you:
+#   CREATE TABLE glue_catalog.{db}.{tbl} USING iceberg AS SELECT * FROM parquet.`s3://.../` LIMIT 0
+```
+
+Spark auto-maps Parquet INT96 timestamps to Spark `TIMESTAMP`, Parquet `DECIMAL(p,s)` to Spark `DECIMAL(p,s)`, etc. When you then write via Iceberg, these map to `timestamp`, `decimal(p,s)` in Iceberg — no manual conversion needed. However, for **date-partitioned source data**, check whether the source used Hive-style `date=YYYY-MM-DD/` directory names — Spark reads those as strings unless you set `spark.sql.sources.partitionColumnTypeInference.enabled=true` (it is by default). You may need to cast to `date` explicitly if the strings don't parse.
+
+**PyIceberg (ECS/Lambda Python):**
+
+```python
+import pyarrow.parquet as pq
+from pyiceberg.io.pyarrow import pyarrow_to_schema
+
+# PyArrow reads the Parquet footer schema without scanning any row groups -- cheap even for huge files.
+arrow_schema = pq.read_schema("s3://{source_bucket}/{source_prefix}/part-00000.parquet")
+iceberg_schema = pyarrow_to_schema(arrow_schema)
+print(iceberg_schema)
+# Pass `iceberg_schema` directly into catalog.create_table(...) -- no manual translation needed.
+```
+
+**Common gotchas:**
+- Parquet files written by different writers (Spark vs Pandas vs AWS Firehose) may have slightly different nullability or logical-type annotations for the same logical column. Sample a file from each writer before locking in the schema.
+- If the source table has evolved (columns added over time), `pq.read_schema` on only the latest file will miss dropped-and-readded columns. Scan the footer of the oldest and newest partition and union.
+- `INT96` timestamps (legacy Hive / old Impala output) will surface as Iceberg `timestamp` without timezone. If your data is actually UTC, declare the Iceberg column as `timestamptz` and rely on Parquet's millisecond/microsecond adjustment on read.
 
 ## Step 2: Migration Strategy Decision Matrix
 
@@ -229,7 +263,8 @@ import pyarrow as pa
 
 catalog = GlueCatalog("glue_catalog", **{
     "warehouse": "s3://{bucket}/warehouse/",
-    "region_name": "{region}"
+    "glue.region": "{region}",
+    "s3.region":   "{region}",
 })
 
 # Step 1: Infer schema from existing Parquet files

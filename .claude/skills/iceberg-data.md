@@ -1,6 +1,5 @@
 ---
 description: "Generate code to insert, upsert (MERGE), delete, or overwrite data in Iceberg tables. Use when a producer needs to ingest data, perform upserts, delete records, or overwrite partitions in their Iceberg table."
-user_invocable: true
 ---
 
 # Iceberg Data Operations
@@ -40,8 +39,9 @@ Always include Spark session config for Iceberg + Glue Catalog.
 **INSERT (Append)**:
 ```python
 # From DataFrame
+# 'fanout-enabled' avoids sorting by partition before write (useful when writing to many partitions in one job).
 df.writeTo("glue_catalog.{database}.{table}") \
-  .option("fan-out-enabled", "true") \
+  .option("fanout-enabled", "true") \
   .append()
 
 # From SQL
@@ -115,14 +115,15 @@ parsed_df = stream_df.select(
     from_json(col("value").cast("string"), schema).alias("data")
 ).select("data.*")
 
+# Use .toTable() with the fully qualified Iceberg table name.
+# DO NOT use .option("path", "glue_catalog.db.tbl") -- that treats the value as a filesystem path and fails.
 query = parsed_df.writeStream \
     .format("iceberg") \
     .outputMode("append") \
-    .option("path", "glue_catalog.{database}.{table}") \
     .option("checkpointLocation", "s3://{bucket}/checkpoints/{table}") \
     .option("fanout-enabled", "true") \
     .trigger(processingTime="5 minutes") \
-    .start()
+    .toTable("glue_catalog.{database}.{table}")
 ```
 
 For Glue jobs, always include:
@@ -137,7 +138,11 @@ import pyarrow as pa
 
 catalog = GlueCatalog("glue_catalog", **{
     "warehouse": "s3://{bucket}/warehouse/",
-    "region_name": "{region}"
+    # Use canonical PyIceberg keys -- both are required:
+    #   glue.region selects the Glue catalog endpoint;
+    #   s3.region selects the S3FileIO endpoint for data/metadata IO.
+    "glue.region": "{region}",
+    "s3.region":   "{region}",
 })
 table = catalog.load_table("{database}.{table}")
 

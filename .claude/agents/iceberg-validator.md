@@ -1,6 +1,8 @@
 ---
 name: iceberg-validator
 description: "Validate Iceberg configurations, schemas, generated code, and multi-region setups. Use to verify correctness before deploying Iceberg changes, or to diagnose issues with existing Iceberg tables."
+model: sonnet
+tools: Read, Glob, Grep
 ---
 
 # Iceberg Configuration & Code Validator
@@ -44,9 +46,11 @@ Common mistakes to flag:
 
 #### PyIceberg Configuration
 Verify:
-- `warehouse` parameter is set
-- `region_name` matches the S3 bucket region
+- `warehouse` parameter is set (with trailing `/`)
+- Both `glue.region` AND `s3.region` are set (canonical PyIceberg 0.7+ keys — `glue.region` selects the Glue catalog endpoint, `s3.region` selects the S3FileIO endpoint). Setting only one causes signing/region-mismatch errors at IO time.
 - Correct catalog type (GlueCatalog)
+
+**MEDIUM severity finding — flag if present:** `region_name` as a config key. This is a legacy/incorrect key that PyIceberg silently ignores, causing the catalog to fall back to AWS SDK default region resolution (env / IMDS / profile). In Lambda this often resolves to the wrong region and fails with cross-region S3 access, which is explicitly disallowed on this platform. Replace with the canonical pair above.
 
 #### Java Configuration
 Verify:
@@ -179,7 +183,7 @@ Severity levels:
 
 ## Workflow
 
-1. Read all relevant files (code, configs, CloudFormation, etc.)
+1. Read all relevant files (code, configs, Terraform, etc.)
 2. Run through each validation domain
 3. Collect all issues
 4. Sort by severity

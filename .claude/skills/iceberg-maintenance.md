@@ -1,6 +1,5 @@
 ---
 description: "Generate Iceberg table maintenance code: compaction, snapshot expiry, orphan file cleanup, manifest rewriting, and statistics collection. Use when a producer needs to optimize table performance or manage storage."
-user_invocable: true
 ---
 
 # Iceberg Table Maintenance
@@ -124,13 +123,29 @@ spark.sql(f"""
 # Review dry_run output, then set dry_run => false
 
 # === 5. REWRITE POSITION DELETE FILES (merge-on-read tables) ===
+# Dedicated procedure for compacting position-delete files into fewer, larger files.
+# Do NOT confuse with rewrite_data_files -- this operates on delete files, not data files.
+spark.sql(f"""
+    CALL glue_catalog.system.rewrite_position_delete_files(
+        table => '{database}.{table}',
+        options => map(
+            'rewrite-all', 'false',
+            'max-concurrent-file-group-rewrites', '5',
+            'partial-progress.enabled', 'true'
+        )
+    )
+""")
+
+# After compacting position deletes, optionally also rewrite data files
+# to resolve (apply) the deletes into new base files (removing the MoR overhead):
 spark.sql(f"""
     CALL glue_catalog.system.rewrite_data_files(
         table => '{database}.{table}',
         options => map(
-            'rewrite-all', 'true'
-        ),
-        where => 'date >= current_date() - INTERVAL 7 DAYS'
+            'delete-file-threshold', '1',
+            'target-file-size-bytes', '134217728',
+            'partial-progress.enabled', 'true'
+        )
     )
 """)
 ```
@@ -162,13 +177,19 @@ orphan_ts = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
 # 1. Expire snapshots
 spark.sql(f"CALL glue_catalog.system.expire_snapshots(table => '{fqtn}', older_than => TIMESTAMP '{expire_ts}', retain_last => 3)")
 
-# 2. Compact data files
+# 2. (MoR tables only) Compact position delete files
+#    Skip this call entirely for copy-on-write tables.
+write_mode = spark.sql(f"SHOW TBLPROPERTIES glue_catalog.{fqtn} ('write.delete.mode')").collect()
+if write_mode and write_mode[0]['value'] == 'merge-on-read':
+    spark.sql(f"CALL glue_catalog.system.rewrite_position_delete_files(table => '{fqtn}', options => map('partial-progress.enabled','true'))")
+
+# 3. Compact data files
 spark.sql(f"CALL glue_catalog.system.rewrite_data_files(table => '{fqtn}', options => map('target-file-size-bytes','134217728','partial-progress.enabled','true'))")
 
-# 3. Rewrite manifests
+# 4. Rewrite manifests
 spark.sql(f"CALL glue_catalog.system.rewrite_manifests(table => '{fqtn}')")
 
-# 4. Remove orphan files
+# 5. Remove orphan files
 spark.sql(f"CALL glue_catalog.system.remove_orphan_files(table => '{fqtn}', older_than => TIMESTAMP '{orphan_ts}')")
 
 spark.stop()
@@ -184,7 +205,8 @@ from datetime import datetime, timedelta
 
 catalog = GlueCatalog("glue_catalog", **{
     "warehouse": "s3://{bucket}/warehouse/",
-    "region_name": "{region}"
+    "glue.region": "{region}",
+    "s3.region":   "{region}",
 })
 table = catalog.load_table("{database}.{table}")
 
@@ -236,12 +258,26 @@ import org.apache.iceberg.spark.actions.SparkActions;
 Table table = catalog.loadTable(TableIdentifier.of("{database}", "{table}"));
 
 // === 1. EXPIRE SNAPSHOTS ===
+// Prefer the Actions API when Spark is available -- it both expires snapshots and
+// asynchronously deletes the unreferenced data/manifest/metadata files in parallel,
+// so you don't need to issue separate DeleteOrphanFiles afterwards for files
+// that were referenced only by the expired snapshots.
 long expireTimestamp = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(7);
-table.expireSnapshots()
+SparkActions.get()
+    .expireSnapshots(table)
     .expireOlderThan(expireTimestamp)
     .retainLast(3)
-    .cleanExpiredFiles(true)
-    .commit();
+    .execute();
+
+// Standalone Java (no Spark runtime available): the core table API still works,
+// but file deletion is serial. For large tables, run this via an ECS task with
+// adequate timeout rather than a Lambda.
+//   long expireTimestamp = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(7);
+//   table.expireSnapshots()
+//       .expireOlderThan(expireTimestamp)
+//       .retainLast(3)
+//       .cleanExpiredFiles(true)
+//       .commit();
 
 // === 2. COMPACT DATA FILES ===
 // Using Iceberg Actions (requires Spark runtime for full rewrite)

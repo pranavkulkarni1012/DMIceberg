@@ -1,6 +1,5 @@
 ---
 description: "Onboard a producer onto Iceberg end-to-end. Use for complete onboarding of a new producer (greenfield) or migrating an existing Parquet producer to Iceberg. Coordinates assessment, code generation, validation, and optionally multi-region setup into a single deliverable."
-user_invocable: true
 ---
 
 # Iceberg Producer Onboarding

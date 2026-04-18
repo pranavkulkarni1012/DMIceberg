@@ -1,6 +1,5 @@
 ---
 description: "Create, alter, or drop Iceberg tables with schema evolution. Use when a producer needs to define a new Iceberg table, modify an existing table schema, change partitioning, or set table properties."
-user_invocable: true
 ---
 
 # Iceberg Table DDL Management
@@ -115,7 +114,8 @@ from pyiceberg.transforms import DayTransform, BucketTransform, ...
 
 catalog = GlueCatalog("glue_catalog", **{
     "warehouse": "s3://{bucket}/warehouse/",
-    "region_name": "{region}"
+    "glue.region": "{region}",
+    "s3.region":   "{region}",
 })
 
 # CREATE

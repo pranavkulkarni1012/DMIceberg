@@ -1,6 +1,5 @@
 ---
 description: "Generate end-to-end Iceberg pipeline for a producer. Use when a new producer needs a complete pipeline from scratch, or when an existing producer needs to add Iceberg support to their existing AWS Glue/EMR/ECS/Lambda pipeline."
-user_invocable: true
 ---
 
 # Iceberg Pipeline Generator
@@ -141,144 +140,213 @@ job.commit()
 # Scheduled to run daily via EventBridge
 ```
 
-**4. Glue Job Configuration (CloudFormation)**:
-```yaml
-Resources:
-  IcebergIngestionJob:
-    Type: AWS::Glue::Job
-    Properties:
-      Name: !Sub '${ProducerName}-iceberg-ingestion'
-      Role: !GetAtt GlueRole.Arn
-      Command:
-        Name: glueetl
-        ScriptLocation: !Sub 's3://${ScriptBucket}/scripts/glue_iceberg_pipeline.py'
-        PythonVersion: '3'
-      DefaultArguments:
-        '--datalake-formats': 'iceberg'
-        '--enable-glue-datacatalog': 'true'
-        '--database': !Ref Database
-        '--table_name': !Ref TableName
-        '--warehouse': !Sub 's3://${DataBucket}/warehouse/'
-        '--conf': >-
-          spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions
-          --conf spark.sql.catalog.glue_catalog=org.apache.iceberg.spark.SparkCatalog
-          --conf spark.sql.catalog.glue_catalog.catalog-impl=org.apache.iceberg.aws.glue.GlueCatalog
-          --conf spark.sql.catalog.glue_catalog.warehouse=s3://${DataBucket}/warehouse/
-          --conf spark.sql.catalog.glue_catalog.io-impl=org.apache.iceberg.aws.s3.S3FileIO
-      GlueVersion: '4.0'
-      NumberOfWorkers: 10
-      WorkerType: G.1X
+**4. Glue Job Configuration (Terraform)**:
 
-  MaintenanceJob:
-    Type: AWS::Glue::Job
-    Properties:
-      Name: !Sub '${ProducerName}-iceberg-maintenance'
-      Role: !GetAtt GlueRole.Arn
-      Command:
-        Name: glueetl
-        ScriptLocation: !Sub 's3://${ScriptBucket}/scripts/glue_iceberg_maintenance.py'
-        PythonVersion: '3'
-      DefaultArguments:
-        '--datalake-formats': 'iceberg'
-        '--enable-glue-datacatalog': 'true'
-      GlueVersion: '4.0'
-      NumberOfWorkers: 5
-      WorkerType: G.1X
+Notes on Glue + Iceberg configuration:
+- `--datalake-formats = iceberg` is the ONLY job parameter required to enable Iceberg on Glue 4.0. Do NOT also pass the Spark catalog configs as `--conf` here -- they will conflict with Glue's auto-registered Iceberg catalog. Set the `spark.sql.catalog.glue_catalog.*` configs in the **job script** via `SparkSession.builder` (shown above) to pick your own catalog name (`glue_catalog`) and the `S3FileIO` `io-impl`. This single source of truth avoids the CFN `>-` folded-scalar `--conf` trap.
+- If your buckets are encrypted with a customer-managed KMS key, grant the Glue role `kms:Decrypt` + `kms:GenerateDataKey` + `kms:Encrypt` on that key (see KMS block below).
 
-  DailyMaintenanceTrigger:
-    Type: AWS::Glue::Trigger
-    Properties:
-      Name: !Sub '${ProducerName}-daily-maintenance'
-      Type: SCHEDULED
-      Schedule: 'cron(0 2 * * ? *)'  # 2 AM daily
-      Actions:
-        - JobName: !Ref MaintenanceJob
-          Arguments:
-            '--database': !Ref Database
-            '--table_name': !Ref TableName
-            '--warehouse': !Sub 's3://${DataBucket}/warehouse/'
+```hcl
+variable "producer_name"    { type = string }
+variable "data_bucket"      { type = string }
+variable "script_bucket"    { type = string }
+variable "database"         { type = string }
+variable "table_name"       { type = string }
+variable "kms_key_arn"      { type = string  default = null }  # set if buckets use SSE-KMS
 
-  GlueRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: glue.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
-      Policies:
-        - PolicyName: IcebergDataAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:PutObject
-                  - s3:DeleteObject
-                  - s3:ListBucket
-                Resource:
-                  - !Sub 'arn:aws:s3:::${DataBucket}'
-                  - !Sub 'arn:aws:s3:::${DataBucket}/*'
-              - Effect: Allow
-                Action:
-                  - glue:GetTable
-                  - glue:GetTables
-                  - glue:UpdateTable
-                  - glue:CreateTable
-                  - glue:DeleteTable
-                  - glue:GetDatabase
-                  - glue:CreateDatabase
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - lakeformation:GetDataAccess
-                Resource: '*'
+locals {
+  warehouse = "s3://${var.data_bucket}/warehouse/"
+}
+
+resource "aws_iam_role" "glue" {
+  name = "${var.producer_name}-iceberg-glue-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = { Service = "glue.amazonaws.com" }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "glue_service" {
+  role       = aws_iam_role.glue.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
+}
+
+resource "aws_iam_role_policy" "iceberg_access" {
+  role = aws_iam_role.glue.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = concat([
+      {
+        Effect = "Allow"
+        # s3:DeleteObject is REQUIRED for compaction, snapshot expiry, orphan cleanup.
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket", "s3:GetObjectVersion"]
+        Resource = [
+          "arn:aws:s3:::${var.data_bucket}",
+          "arn:aws:s3:::${var.data_bucket}/*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "glue:GetTable", "glue:GetTables", "glue:UpdateTable",
+          "glue:CreateTable", "glue:DeleteTable",
+          "glue:GetDatabase", "glue:CreateDatabase",
+          "glue:GetPartitions", "glue:BatchCreatePartition"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = ["lakeformation:GetDataAccess"]
+        Resource = "*"
+      }
+    ],
+    var.kms_key_arn == null ? [] : [{
+      Effect = "Allow"
+      Action = ["kms:Decrypt", "kms:GenerateDataKey", "kms:Encrypt", "kms:DescribeKey"]
+      Resource = var.kms_key_arn
+    }])
+  })
+}
+
+resource "aws_glue_job" "ingestion" {
+  name     = "${var.producer_name}-iceberg-ingestion"
+  role_arn = aws_iam_role.glue.arn
+  glue_version      = "4.0"
+  number_of_workers = 10
+  worker_type       = "G.1X"
+
+  command {
+    name            = "glueetl"
+    script_location = "s3://${var.script_bucket}/scripts/glue_iceberg_pipeline.py"
+    python_version  = "3"
+  }
+
+  default_arguments = {
+    "--datalake-formats"        = "iceberg"
+    "--enable-glue-datacatalog" = "true"
+    "--database"                = var.database
+    "--table_name"              = var.table_name
+    "--warehouse"               = local.warehouse
+  }
+}
+
+resource "aws_glue_job" "maintenance" {
+  name     = "${var.producer_name}-iceberg-maintenance"
+  role_arn = aws_iam_role.glue.arn
+  glue_version      = "4.0"
+  number_of_workers = 5
+  worker_type       = "G.1X"
+
+  command {
+    name            = "glueetl"
+    script_location = "s3://${var.script_bucket}/scripts/glue_iceberg_maintenance.py"
+    python_version  = "3"
+  }
+
+  default_arguments = {
+    "--datalake-formats"        = "iceberg"
+    "--enable-glue-datacatalog" = "true"
+  }
+}
+
+resource "aws_glue_trigger" "daily_maintenance" {
+  name     = "${var.producer_name}-daily-maintenance"
+  type     = "SCHEDULED"
+  schedule = "cron(0 2 * * ? *)"  # 2 AM UTC daily
+
+  actions {
+    job_name = aws_glue_job.maintenance.name
+    arguments = {
+      "--database"   = var.database
+      "--table_name" = var.table_name
+      "--warehouse"  = local.warehouse
+    }
+  }
+}
 ```
 
 ### 3B: New Producer - ECS/Lambda Python (PyIceberg)
 
+**Concurrency note**: Iceberg catalog commits are optimistic. If many Lambda invocations fire concurrently and all append to the same table, commits will contend and `CommitFailedException` will be raised. Wrap the table mutation in the `commit_with_retry` helper (Step 3G) OR funnel writes through a FIFO SQS queue for a single-writer pattern.
+
 **Lambda Handler (`iceberg_handler.py`)**:
 ```python
 import json
-import boto3
-import pyarrow as pa
+import os
+import random
+import time
+import logging
 import pyarrow.parquet as pq
 from pyiceberg.catalog.glue import GlueCatalog
-from datetime import datetime
+from pyiceberg.exceptions import CommitFailedException
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+
+def commit_with_retry(fn, max_attempts=8, base_delay=0.25, max_delay=16.0):
+    """
+    Retry an Iceberg write operation on CommitFailedException.
+    Uses exponential backoff with jitter so parallel Lambda invocations
+    don't retry in lockstep.
+    """
+    attempt = 0
+    while True:
+        try:
+            return fn()
+        except CommitFailedException as e:
+            attempt += 1
+            if attempt >= max_attempts:
+                raise
+            delay = min(max_delay, base_delay * (2 ** attempt)) + random.uniform(0, 0.5)
+            logger.warning("CommitFailedException on attempt %d: %s. Retrying in %.2fs", attempt, e, delay)
+            time.sleep(delay)
+
 
 def handler(event, context):
     config = {
-        'warehouse': event['warehouse'],
-        'region': event['region'],
-        'database': event['database'],
-        'table_name': event['table_name'],
+        'warehouse':  event.get('warehouse')  or os.environ['WAREHOUSE'],
+        'region':     event.get('region')     or os.environ['AWS_REGION'],
+        'database':   event.get('database')   or os.environ['DATABASE'],
+        'table_name': event.get('table_name') or os.environ['TABLE_NAME'],
         'source_path': event['source_path'],
-        'operation': event.get('operation', 'append')
+        'operation':  event.get('operation', 'append'),
     }
 
+    # Use PyIceberg's canonical config keys. glue.region + s3.region are authoritative
+    # for the Glue catalog and the S3 FileIO; region_name is a boto3-passthrough and
+    # may break on future PyIceberg versions.
     catalog = GlueCatalog("glue_catalog", **{
-        "warehouse": config['warehouse'],
-        "region_name": config['region']
+        "warehouse":  config['warehouse'],
+        "glue.region": config['region'],
+        "s3.region":   config['region'],
     })
 
     table = catalog.load_table(f"{config['database']}.{config['table_name']}")
 
-    # Read source data
+    # Read source data into an Arrow table.
     arrow_table = pq.read_table(config['source_path'])
 
+    # All mutations run through commit_with_retry so parallel Lambda invocations survive optimistic-concurrency contention.
     if config['operation'] == 'append':
-        table.append(arrow_table)
+        commit_with_retry(lambda: table.append(arrow_table))
     elif config['operation'] == 'overwrite':
-        table.overwrite(arrow_table)
+        commit_with_retry(lambda: table.overwrite(arrow_table))
     elif config['operation'] == 'delete':
         from pyiceberg.expressions import EqualTo
-        table.delete(delete_filter=EqualTo(event['delete_column'], event['delete_value']))
+        commit_with_retry(lambda: table.delete(
+            delete_filter=EqualTo(event['delete_column'], event['delete_value'])
+        ))
+    else:
+        raise ValueError(f"Unknown operation: {config['operation']}")
 
+    # Reload to get the latest snapshot after our commit.
+    table.refresh()
     return {
         'statusCode': 200,
         'body': json.dumps({
@@ -444,7 +512,8 @@ import pyarrow as pa
 
 catalog = GlueCatalog("glue_catalog", **{
     "warehouse": "s3://bucket/warehouse/",
-    "region_name": "us-east-1"
+    "glue.region": "us-east-1",
+    "s3.region":   "us-east-1",
 })
 iceberg_table = catalog.load_table("database.table")
 
@@ -505,6 +574,274 @@ table.newAppend().appendFile(writer.toDataFile()).commit();
 ```
 
 Add Iceberg Maven dependencies: `iceberg-core`, `iceberg-data`, `iceberg-parquet`, `iceberg-aws` (version 1.7.1).
+
+### 3G: Cross-cutting patterns
+
+**Commit retry (Java)** -- mandatory for any runtime where multiple writers may commit to the same table concurrently (parallel ECS tasks, Lambda fan-out):
+
+```java
+import org.apache.iceberg.exceptions.CommitFailedException;
+import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
+
+public final class IcebergCommits {
+    private IcebergCommits() {}
+
+    public static <T> T withRetry(java.util.function.Supplier<T> op) {
+        int attempt = 0, max = 8;
+        long baseMs = 250, capMs = 16_000;
+        while (true) {
+            try {
+                return op.get();
+            } catch (CommitFailedException e) {
+                if (++attempt >= max) throw e;
+                long delay = Math.min(capMs, baseMs * (1L << attempt))
+                    + ThreadLocalRandom.current().nextLong(500);
+                try { Thread.sleep(delay); } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException(ie);
+                }
+            }
+        }
+    }
+}
+
+// Usage:
+IcebergCommits.withRetry(() -> {
+    table.newAppend().appendFile(dataFile).commit();
+    return null;
+});
+```
+
+**Writing to PARTITIONED tables (Java)** -- the `DataFiles.builder()` path shown earlier works for *unpartitioned* tables. For partitioned tables, you must supply partition data so Iceberg can place the file into the correct partition tuple:
+
+```java
+import org.apache.iceberg.PartitionKey;
+import org.apache.iceberg.data.GenericRecord;
+
+// Compute the partition key from a sample record (or a representative value).
+PartitionKey pk = new PartitionKey(table.spec(), table.schema());
+pk.partition(sampleRecord);  // projects partition columns through the table's transforms
+
+DataFile dataFile = DataFiles.builder(table.spec())
+    .withPath(dataFilePath)
+    .withFileSizeInBytes(outputFile.toInputFile().getLength())
+    .withRecordCount(recordCount)
+    .withFormat(FileFormat.PARQUET)
+    .withPartition(pk)                // <-- REQUIRED for partitioned tables
+    // .withMetrics(metrics)          // supply column-level metrics for predicate pushdown
+    .build();
+```
+
+**ECS (Fargate) deployment skeleton (Terraform)**:
+```hcl
+variable "producer_name" { type = string }
+variable "data_bucket"   { type = string }
+variable "image_uri"     { type = string }  # ECR image containing your ingestion code
+variable "subnet_ids"    { type = list(string) }
+variable "security_group_ids" { type = list(string) }
+variable "kms_key_arn"   { type = string  default = null }
+
+resource "aws_iam_role" "task" {
+  name = "${var.producer_name}-iceberg-task-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "task" {
+  role = aws_iam_role.task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = concat([
+      {
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket", "s3:GetObjectVersion"]
+        Resource = ["arn:aws:s3:::${var.data_bucket}", "arn:aws:s3:::${var.data_bucket}/*"]
+      },
+      {
+        Effect = "Allow"
+        Action = ["glue:GetTable","glue:GetTables","glue:UpdateTable","glue:CreateTable","glue:GetDatabase","glue:CreateDatabase"]
+        Resource = "*"
+      }
+    ],
+    var.kms_key_arn == null ? [] : [{
+      Effect = "Allow"
+      Action = ["kms:Decrypt","kms:GenerateDataKey","kms:Encrypt","kms:DescribeKey"]
+      Resource = var.kms_key_arn
+    }])
+  })
+}
+
+resource "aws_ecs_cluster" "this" { name = "${var.producer_name}-iceberg" }
+
+resource "aws_ecs_task_definition" "ingest" {
+  family                   = "${var.producer_name}-iceberg-ingest"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = "1024"
+  memory                   = "2048"
+  execution_role_arn       = aws_iam_role.task.arn
+  task_role_arn            = aws_iam_role.task.arn
+  container_definitions = jsonencode([{
+    name      = "ingest"
+    image     = var.image_uri
+    essential = true
+    environment = [
+      { name = "WAREHOUSE",  value = "s3://${var.data_bucket}/warehouse/" },
+      { name = "AWS_REGION", value = data.aws_region.current.name }
+    ]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = "/ecs/${var.producer_name}-iceberg-ingest"
+        awslogs-region        = data.aws_region.current.name
+        awslogs-stream-prefix = "ingest"
+      }
+    }
+  }])
+}
+
+data "aws_region" "current" {}
+
+resource "aws_scheduler_schedule" "ingest" {
+  name       = "${var.producer_name}-iceberg-ingest"
+  group_name = "default"
+  flexible_time_window { mode = "OFF" }
+  schedule_expression = "rate(1 hour)"
+  target {
+    arn      = aws_ecs_cluster.this.arn
+    role_arn = aws_iam_role.task.arn
+    ecs_parameters {
+      task_definition_arn = aws_ecs_task_definition.ingest.arn
+      launch_type         = "FARGATE"
+      network_configuration {
+        subnets          = var.subnet_ids
+        security_groups  = var.security_group_ids
+        assign_public_ip = false
+      }
+    }
+  }
+}
+```
+
+**Lambda deployment skeleton (Terraform)**:
+```hcl
+variable "producer_name" { type = string }
+variable "data_bucket"   { type = string }
+variable "database"      { type = string }
+variable "table_name"    { type = string }
+variable "code_zip_path" { type = string }  # local path to packaged zip
+variable "kms_key_arn"   { type = string  default = null }
+
+resource "aws_iam_role" "lambda" {
+  name = "${var.producer_name}-iceberg-lambda-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_basic" {
+  role       = aws_iam_role.lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy" "lambda" {
+  role = aws_iam_role.lambda.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = concat([
+      {
+        Effect = "Allow"
+        Action = ["s3:GetObject","s3:PutObject","s3:DeleteObject","s3:ListBucket","s3:GetObjectVersion"]
+        Resource = ["arn:aws:s3:::${var.data_bucket}","arn:aws:s3:::${var.data_bucket}/*"]
+      },
+      {
+        Effect = "Allow"
+        Action = ["glue:GetTable","glue:GetTables","glue:UpdateTable","glue:CreateTable","glue:GetDatabase","glue:CreateDatabase"]
+        Resource = "*"
+      }
+    ],
+    var.kms_key_arn == null ? [] : [{
+      Effect = "Allow"
+      Action = ["kms:Decrypt","kms:GenerateDataKey","kms:Encrypt","kms:DescribeKey"]
+      Resource = var.kms_key_arn
+    }])
+  })
+}
+
+resource "aws_lambda_function" "ingest" {
+  function_name = "${var.producer_name}-iceberg-ingest"
+  role          = aws_iam_role.lambda.arn
+  handler       = "iceberg_handler.handler"
+  runtime       = "python3.11"
+  filename      = var.code_zip_path
+  timeout       = 900   # 15 min max; consider ECS if ingestion exceeds this.
+  memory_size   = 2048  # PyIceberg + PyArrow need room.
+  environment {
+    variables = {
+      WAREHOUSE  = "s3://${var.data_bucket}/warehouse/"
+      DATABASE   = var.database
+      TABLE_NAME = var.table_name
+    }
+  }
+  # Reserved concurrency = 1 enforces a single-writer pattern and avoids
+  # CommitFailedException retries entirely. Remove if you rely on commit_with_retry.
+  reserved_concurrent_executions = 1
+}
+```
+
+**PyIceberg-producer maintenance (Glue PySpark) role** -- since PyIceberg cannot compact, Lambda/ECS-Python producers need a *separate* Glue job. Give that Glue role access to the Lambda producer's data bucket and table:
+
+```hcl
+# Reuse the producer's data_bucket and (optional) kms_key_arn variables.
+resource "aws_iam_role" "maint_glue" {
+  name = "${var.producer_name}-iceberg-maint-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{ Effect = "Allow", Principal = { Service = "glue.amazonaws.com" }, Action = "sts:AssumeRole" }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "maint_glue_service" {
+  role       = aws_iam_role.maint_glue.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
+}
+
+resource "aws_iam_role_policy" "maint" {
+  role = aws_iam_role.maint_glue.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = concat([
+      {
+        Effect = "Allow"
+        Action = ["s3:GetObject","s3:PutObject","s3:DeleteObject","s3:ListBucket","s3:GetObjectVersion"]
+        Resource = ["arn:aws:s3:::${var.data_bucket}","arn:aws:s3:::${var.data_bucket}/*"]
+      },
+      {
+        Effect = "Allow"
+        Action = ["glue:GetTable","glue:GetTables","glue:UpdateTable","glue:GetDatabase"]
+        Resource = "*"
+      }
+    ],
+    var.kms_key_arn == null ? [] : [{
+      Effect = "Allow"
+      Action = ["kms:Decrypt","kms:GenerateDataKey","kms:Encrypt","kms:DescribeKey"]
+      Resource = var.kms_key_arn
+    }])
+  })
+}
+```
 
 ## Step 4: Multi-Region Integration
 
