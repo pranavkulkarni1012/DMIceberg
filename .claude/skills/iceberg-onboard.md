@@ -7,9 +7,15 @@ description: "Onboard a producer onto Iceberg end-to-end. Use for complete onboa
 ## Goal
 Gather the producer's requirements, then delegate to the `iceberg-orchestrator` agent for end-to-end onboarding. This skill is the single entry point for any producer -- new or existing -- who needs a complete Iceberg setup.
 
+## Step 0: Check for profile
+
+Before asking anything, check whether a producer profile exists at `profiles/<producer-name>.yaml`. If one exists, load the answers from it (primary region, DR region, buckets, database, tech stack, orchestrator, multi-region posture) and **skip those questions in Step 1** — only ask for what is missing or ambiguous.
+
+If no profile exists, recommend the producer run `/iceberg-profile-setup` first so subsequent skill runs don't have to re-ask the same conventions. If they insist on proceeding without a profile, continue to Step 1 and note in the final deliverable that a profile should be captured post-onboarding.
+
 ## Step 1: Gather Requirements
 
-Ask the producer for the following (skip what's already provided):
+Ask the producer for the following (skip what's already provided OR already captured in their profile):
 
 1. **Producer type**: New (no existing pipeline) or Existing (has a Parquet pipeline to migrate)?
 

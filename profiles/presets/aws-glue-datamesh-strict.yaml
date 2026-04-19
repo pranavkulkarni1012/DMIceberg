@@ -1,0 +1,74 @@
+# Preset: AWS Glue + Data Mesh + strict multi-region isolation
+#
+# Use this preset if your org blocks cross-region S3 and MRAPs.
+# This is the default/recommended posture for regulated industries (finance, healthcare, gov).
+#
+# Producers inherit this via:
+#   extends: aws-glue-datamesh-strict
+
+cloud: aws
+catalog: glue
+
+multi_region:
+  enabled: true
+  cross_region_s3_allowed: false
+  multi_region_access_points_allowed: false
+  repointing_schedule_minutes: 15
+  failover_rto_minutes: 60
+  failover_rpo_minutes: 20
+
+format_version: 2
+
+partition_defaults:
+  target_file_size_bytes: 134217728           # 128 MB
+  parquet_compression_codec: zstd
+  distribution_mode: hash
+  delete_mode: merge-on-read
+  metadata_delete_after_commit: true
+  metadata_previous_versions_max: 10
+
+maintenance:
+  compaction:
+    schedule: "0 0 * * *"                     # daily midnight UTC
+    target_file_size_bytes: 134217728
+    min_input_files: 5
+  snapshot_expiration:
+    schedule: "0 2 * * 0"                     # Sunday 02:00 UTC
+    retain_days: 7
+    retain_last: 10
+  orphan_cleanup:
+    schedule: "0 3 1 * *"                     # 1st of month, 03:00 UTC
+    older_than_days: 14
+
+kms:
+  bucket_encryption: aws:kms
+
+lake_formation:
+  enabled: false                              # opt-in per producer
+
+governance:
+  required_tags:
+    - CostCenter
+    - Owner
+    - DataClassification
+  change_approval:
+    ddl_requires_ticket: false
+    migrate_requires_ticket: true
+
+observability:
+  metrics_namespace: "Iceshelf"
+  alarms:
+    commit_failure_threshold: 5
+    commit_failure_window_minutes: 15
+    repointing_latency_threshold_seconds: 1800
+    snapshot_count_threshold: 10000
+  dashboards:
+    per_producer: true
+    fleet_rollup: true
+
+naming_conventions:
+  bucket_pattern: "{producer_name}-{stage}-{region}"
+  database_pattern: "{producer_name}_{stage}"
+  warehouse_path: "s3://{bucket}/warehouse/"
+
+orchestrator: step_functions                  # override per producer if needed

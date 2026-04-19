@@ -1,0 +1,1202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Iceshelf v1.0.0 &mdash; Executive & Technical Overview</title>
+<meta name="description" content="Iceshelf: Apache Iceberg onboarding platform for AWS Data Mesh producers. Senior-leadership, architect, and developer briefing deck." />
+<style>
+  :root {
+    --bg-0: #05070f;
+    --bg-1: #0b1020;
+    --bg-2: #0f172a;
+    --surface: #111827;
+    --surface-2: #0e1627;
+    --border: #1f2a44;
+    --border-strong: #2b3a5f;
+    --text: #e6edf7;
+    --text-dim: #9aa7bd;
+    --text-faint: #6b7890;
+    --cyan: #22d3ee;
+    --emerald: #34d399;
+    --violet: #a78bfa;
+    --amber: #fbbf24;
+    --rose: #fb7185;
+    --sky: #7dd3fc;
+    --mono: ui-monospace, "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+    --sans: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    color: var(--text);
+    background:
+      radial-gradient(1200px 700px at 85% -10%, rgba(34,211,238,0.10), transparent 60%),
+      radial-gradient(1000px 600px at -10% 110%, rgba(167,139,250,0.10), transparent 60%),
+      linear-gradient(180deg, var(--bg-0), var(--bg-2));
+    min-height: 100vh;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(148,163,184,0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148,163,184,0.035) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.6), transparent 80%);
+    -webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.6), transparent 80%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .deck { position: relative; z-index: 1; }
+
+  /* ===== Chrome: progress bar, counter, nav ===== */
+  .progress {
+    position: fixed; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, var(--cyan), var(--violet));
+    transform-origin: left center;
+    transform: scaleX(0.08);
+    transition: transform 400ms cubic-bezier(.2,.8,.2,1);
+    z-index: 50;
+  }
+
+  .topbar {
+    position: fixed; top: 14px; left: 20px; right: 20px;
+    display: flex; justify-content: space-between; align-items: center;
+    z-index: 40; pointer-events: none;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 700; letter-spacing: 0.02em;
+    font-size: 14px; color: var(--text-dim);
+  }
+  .brand .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--violet));
+    box-shadow: 0 0 20px rgba(34,211,238,0.55);
+  }
+  .counter {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    background: rgba(15,23,42,0.6);
+    border: 1px solid var(--border);
+    padding: 6px 10px; border-radius: 999px;
+    pointer-events: auto;
+    display: inline-flex; align-items: center; gap: 10px;
+  }
+  .counter b { color: var(--text); font-weight: 700; }
+  .counter .t-title {
+    color: var(--text-dim);
+    padding-left: 10px;
+    border-left: 1px solid var(--border);
+    letter-spacing: 0.02em;
+    font-family: var(--sans);
+    font-size: 12px;
+  }
+
+  .bottombar {
+    position: fixed; bottom: 18px; left: 0; right: 0;
+    display: flex; justify-content: center; gap: 8px;
+    z-index: 40;
+  }
+  .dotnav { display: flex; gap: 6px; }
+  .dotnav button {
+    appearance: none; border: 0; cursor: pointer;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #2a3958; padding: 0;
+    transition: transform 180ms ease, background 180ms ease, width 180ms ease;
+  }
+  .dotnav button.active {
+    background: linear-gradient(135deg, var(--cyan), var(--violet));
+    width: 22px; border-radius: 4px;
+  }
+  .dotnav button:hover { transform: scale(1.2); }
+
+  .navhint {
+    position: fixed; bottom: 22px; right: 22px;
+    font-family: var(--mono); font-size: 11px; color: var(--text-faint);
+    z-index: 40;
+  }
+  .navhint kbd {
+    font-family: var(--mono);
+    background: rgba(15,23,42,0.7);
+    border: 1px solid var(--border);
+    padding: 2px 6px; border-radius: 4px;
+    margin: 0 2px;
+  }
+
+  /* ===== Slide frame ===== */
+  .deck { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+  .slide {
+    position: absolute; inset: 0;
+    padding: 72px clamp(32px, 6vw, 96px) 80px;
+    display: flex; flex-direction: column; justify-content: center;
+    opacity: 0; transform: translateY(16px);
+    transition: opacity 420ms ease, transform 420ms cubic-bezier(.2,.8,.2,1);
+    pointer-events: none;
+    overflow-y: auto;
+  }
+  .slide.active { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  .slide.active .card,
+  .slide.active .stat,
+  .slide.active .region-card,
+  .slide.active .node {
+    animation: rise 520ms cubic-bezier(.2,.8,.2,1) both;
+  }
+  .slide.active .card:nth-child(2),
+  .slide.active .stat:nth-child(2) { animation-delay: 70ms; }
+  .slide.active .card:nth-child(3),
+  .slide.active .stat:nth-child(3) { animation-delay: 140ms; }
+  .slide.active .card:nth-child(4),
+  .slide.active .stat:nth-child(4) { animation-delay: 210ms; }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .slide, .slide.active .card, .slide.active .stat,
+    .slide.active .region-card, .slide.active .node {
+      animation: none !important; transition: none !important; transform: none !important;
+    }
+  }
+
+  .slide-inner {
+    max-width: 1280px; margin: 0 auto; width: 100%;
+  }
+
+  /* ===== Typography ===== */
+  h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -0.015em; line-height: 1.1; }
+  h1 { font-size: clamp(40px, 5vw, 72px); }
+  h2 { font-size: clamp(28px, 3.2vw, 44px); }
+  h3 { font-size: clamp(18px, 1.4vw, 22px); font-weight: 600; }
+  p  { line-height: 1.55; color: var(--text-dim); font-size: clamp(15px, 1.15vw, 17px); margin: 0; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--cyan);
+    margin-bottom: 18px; display: inline-flex; align-items: center; gap: 10px;
+  }
+  .eyebrow::before {
+    content: ""; width: 24px; height: 2px; background: var(--cyan);
+    display: inline-block; box-shadow: 0 0 14px var(--cyan);
+  }
+  .lede { color: var(--text); font-size: clamp(18px, 1.5vw, 22px); line-height: 1.45; }
+  .text-dim { color: var(--text-dim); }
+  .text-faint { color: var(--text-faint); }
+  .accent { color: var(--cyan); }
+  .accent-violet { color: var(--violet); }
+  .accent-emerald { color: var(--emerald); }
+
+  /* ===== Audience pills ===== */
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px;
+    border: 1px solid var(--border-strong); background: rgba(15,23,42,0.55);
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text-dim);
+  }
+  .pill .pip { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); }
+  .pill.mgmt   { color: var(--amber);   border-color: rgba(251,191,36,0.45); }
+  .pill.mgmt   .pip { background: var(--amber);   box-shadow: 0 0 8px var(--amber);   }
+  .pill.arch   { color: var(--violet);  border-color: rgba(167,139,250,0.45); }
+  .pill.arch   .pip { background: var(--violet);  box-shadow: 0 0 8px var(--violet);  }
+  .pill.dev    { color: var(--emerald); border-color: rgba(52,211,153,0.45); }
+  .pill.dev    .pip { background: var(--emerald); box-shadow: 0 0 8px var(--emerald); }
+  .pill.all    { color: var(--cyan);    border-color: rgba(34,211,238,0.45); }
+  .pill.all    .pip { background: var(--cyan);    box-shadow: 0 0 8px var(--cyan);    }
+  .pill-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 22px; }
+
+  /* ===== Card primitives ===== */
+  .card {
+    background: linear-gradient(180deg, rgba(17,24,39,0.9), rgba(14,22,39,0.9));
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 22px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 200ms ease, transform 200ms ease;
+  }
+  .card:hover { border-color: var(--border-strong); }
+  .card h3 { margin-bottom: 8px; }
+  .card p { font-size: 14px; }
+  .card.accent-left::before {
+    content: ""; position: absolute; top: 0; left: 0; bottom: 0; width: 3px;
+    background: linear-gradient(180deg, var(--cyan), var(--violet));
+  }
+  .card.accent-cyan::before     { background: var(--cyan);    box-shadow: 0 0 14px var(--cyan);    }
+  .card.accent-violet::before   { background: var(--violet);  box-shadow: 0 0 14px var(--violet);  }
+  .card.accent-emerald::before  { background: var(--emerald); box-shadow: 0 0 14px var(--emerald); }
+  .card.accent-amber::before    { background: var(--amber);   box-shadow: 0 0 14px var(--amber);   }
+
+  .grid { display: grid; gap: 18px; }
+  .grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+  .grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 900px) {
+    .grid.cols-3, .grid.cols-4 { grid-template-columns: 1fr 1fr; }
+  }
+
+  /* ===== Stat cards ===== */
+  .stat {
+    background: linear-gradient(180deg, rgba(17,24,39,0.9), rgba(14,22,39,0.9));
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    position: relative; overflow: hidden;
+  }
+  .stat .num {
+    font-family: var(--mono);
+    font-size: clamp(40px, 4.2vw, 64px);
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--cyan), var(--violet));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    letter-spacing: -0.03em; line-height: 1;
+  }
+  .stat .label {
+    margin-top: 8px; color: var(--text-dim); font-size: 14px;
+  }
+
+  /* ===== Code blocks ===== */
+  pre.code {
+    font-family: var(--mono); font-size: 13px;
+    background: #060a16; border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px;
+    color: #cbd5e1; overflow: auto; line-height: 1.55;
+    margin: 0;
+  }
+  pre.code .k  { color: var(--violet); }
+  pre.code .s  { color: var(--emerald); }
+  pre.code .c  { color: var(--text-faint); font-style: italic; }
+  pre.code .n  { color: var(--sky); }
+  pre.code .p  { color: var(--cyan); }
+  pre.code .f  { color: var(--amber); }
+
+  /* ===== Tables ===== */
+  table.t {
+    width: 100%; border-collapse: collapse;
+    font-size: 14px;
+  }
+  table.t th, table.t td {
+    text-align: left; padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  table.t th {
+    color: var(--text-faint); font-weight: 600; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    background: rgba(15,23,42,0.4);
+  }
+  table.t tr:hover td { background: rgba(34,211,238,0.03); }
+  table.t code {
+    font-family: var(--mono); font-size: 12.5px;
+    background: rgba(34,211,238,0.08);
+    color: var(--cyan);
+    padding: 2px 6px; border-radius: 4px;
+  }
+
+  /* ===== Utility ===== */
+  .row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .space-between { justify-content: space-between; }
+  .mt-4 { margin-top: 16px; }  .mt-6 { margin-top: 24px; }
+  .mt-8 { margin-top: 32px; }  .mt-10 { margin-top: 40px; }
+  .mb-4 { margin-bottom: 16px; } .mb-6 { margin-bottom: 24px; }
+  .gap-2 { gap: 8px; } .gap-4 { gap: 16px; }
+  .text-center { text-align: center; }
+  .mono { font-family: var(--mono); }
+  .small { font-size: 13px; }
+  .list { margin: 0; padding-left: 18px; color: var(--text-dim); line-height: 1.75; }
+  .list li { padding: 2px 0; }
+  .list.tight li { padding: 0; }
+  .list.checked { list-style: none; padding-left: 0; }
+  .list.checked li::before {
+    content: "✓"; color: var(--emerald); font-weight: 700;
+    display: inline-block; width: 22px;
+  }
+  .list.x { list-style: none; padding-left: 0; }
+  .list.x li::before {
+    content: "✕"; color: var(--rose); font-weight: 700;
+    display: inline-block; width: 22px;
+  }
+
+  .divider {
+    height: 1px; background: linear-gradient(90deg, transparent, var(--border-strong), transparent);
+    margin: 28px 0;
+  }
+
+  /* ===== Title slide ===== */
+  .title-hero {
+    display: flex; flex-direction: column; gap: 28px;
+  }
+  .title-hero .title {
+    font-size: clamp(64px, 9vw, 128px);
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 0.95;
+    background: linear-gradient(135deg, #fff 0%, #cbd5e1 50%, var(--cyan) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    position: relative;
+    display: inline-block;
+  }
+  .title-hero .title::after {
+    content: "";
+    position: absolute; left: -5%; right: -5%; top: 10%; bottom: -10%;
+    background: radial-gradient(60% 50% at 50% 50%, rgba(34,211,238,0.18), transparent 70%);
+    z-index: -1;
+    filter: blur(30px);
+    pointer-events: none;
+  }
+  .title-hero .kicker {
+    font-size: clamp(18px, 1.6vw, 24px);
+    color: var(--text-dim); max-width: 900px; line-height: 1.4;
+  }
+  .badge-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+  .badge {
+    font-family: var(--mono); font-size: 12px;
+    padding: 6px 12px; border-radius: 8px;
+    background: rgba(34,211,238,0.08);
+    color: var(--cyan);
+    border: 1px solid rgba(34,211,238,0.28);
+  }
+  .badge.violet { background: rgba(167,139,250,0.08); color: var(--violet); border-color: rgba(167,139,250,0.28); }
+  .badge.emerald { background: rgba(52,211,153,0.08); color: var(--emerald); border-color: rgba(52,211,153,0.28); }
+  .badge.faint { background: rgba(148,163,184,0.06); color: var(--text-dim); border-color: var(--border); }
+
+  /* ===== Diagram primitives ===== */
+  .flow {
+    display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: stretch;
+    gap: 14px; margin-top: 8px;
+  }
+  .flow .node {
+    background: linear-gradient(180deg, rgba(17,24,39,0.9), rgba(14,22,39,0.9));
+    border: 1px solid var(--border-strong);
+    border-radius: 14px; padding: 20px;
+    display: flex; flex-direction: column; gap: 6px;
+    position: relative;
+  }
+  .flow .node .tag {
+    font-family: var(--mono); font-size: 11px; color: var(--cyan); letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .flow .node h3 { font-size: 18px; }
+  .flow .arrow {
+    display: flex; align-items: center; justify-content: center; color: var(--cyan);
+  }
+
+  /* ===== Multi-region diagram ===== */
+  .mr {
+    display: grid; grid-template-columns: 1fr auto 1fr; gap: 24px; align-items: stretch;
+  }
+  .region-card {
+    border: 1px solid var(--border-strong);
+    border-radius: 14px; padding: 22px;
+    background: linear-gradient(180deg, rgba(14,22,39,0.95), rgba(11,16,32,0.95));
+    position: relative;
+  }
+  .region-card::before {
+    content: ""; position: absolute; inset: 0; border-radius: 14px; pointer-events: none;
+    box-shadow: inset 0 0 0 1px rgba(34,211,238,0.15);
+  }
+  .region-card.dr::before { box-shadow: inset 0 0 0 1px rgba(167,139,250,0.18); }
+  .region-card .head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .region-card .head .r {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--cyan); padding: 4px 8px; border-radius: 6px;
+    border: 1px solid rgba(34,211,238,0.35);
+  }
+  .region-card.dr .head .r { color: var(--violet); border-color: rgba(167,139,250,0.4); }
+  .region-card .layer {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 10px 0; border-top: 1px dashed var(--border);
+  }
+  .region-card .layer:first-of-type { border-top: 0; }
+  .region-card .layer .ic {
+    width: 28px; height: 28px; border-radius: 6px;
+    background: rgba(34,211,238,0.08); border: 1px solid rgba(34,211,238,0.28);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; color: var(--cyan); flex: 0 0 auto;
+  }
+  .region-card.dr .layer .ic {
+    background: rgba(167,139,250,0.08); border-color: rgba(167,139,250,0.32); color: var(--violet);
+  }
+  .region-card .layer .ltxt h4 { margin: 0; font-size: 14px; }
+  .region-card .layer .ltxt p  { margin: 2px 0 0; font-size: 12.5px; }
+
+  .mr-link {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; min-width: 140px;
+  }
+  .mr-link .label {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
+    color: var(--text-dim); text-transform: uppercase; text-align: center;
+  }
+  .mr-link svg { display: block; }
+
+  /* ===== Print ===== */
+  @media print {
+    body { background: #fff; color: #111; }
+    .slide { position: relative; opacity: 1; transform: none; page-break-after: always; height: auto; min-height: 100vh; }
+    .topbar, .bottombar, .progress, .navhint { display: none; }
+  }
+
+  /* ===== Scrollbar polish ===== */
+  .slide::-webkit-scrollbar { width: 6px; }
+  .slide::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  pre.code::-webkit-scrollbar { height: 6px; width: 6px; }
+  pre.code::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<div class="topbar">
+  <div class="brand"><span class="dot"></span>ICESHELF &middot; v1.0.0</div>
+  <div class="counter"><b id="sc-cur">01</b> / <span id="sc-tot">11</span><span class="t-title" id="sc-title">Title</span></div>
+</div>
+
+<main class="deck" id="deck">
+
+  <!-- ===================== 1. TITLE ===================== -->
+  <section class="slide active" data-title="Title">
+    <div class="slide-inner">
+      <div class="eyebrow">Iceshelf &middot; v1.0.0</div>
+      <div class="title-hero">
+        <div>
+          <div class="title">Iceshelf</div>
+          <div class="kicker mt-4">
+            Apache Iceberg onboarding for AWS Data Mesh. A Claude Code plugin &mdash;
+            skills and subagents that write production-ready Iceberg code, IaC, and
+            runbooks <b>into your producer&rsquo;s existing repository</b>.
+          </div>
+        </div>
+        <div class="badge-row">
+          <span class="badge">Your repo. Your code.</span>
+          <span class="badge emerald">No SaaS runtime</span>
+          <span class="badge violet">Multi-region by default</span>
+          <span class="badge faint">Apache-2.0</span>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="row space-between">
+        <div class="mono small text-dim">A briefing for senior management and senior architects.</div>
+        <div class="mono small text-faint">github.com/&lt;org&gt;/Iceshelf</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 2. PROBLEM ===================== -->
+  <section class="slide" data-title="Problem">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill mgmt"><span class="pip"></span>Leadership</span>
+        <span class="pill arch"><span class="pip"></span>Architect</span>
+      </div>
+      <div class="eyebrow">Problem</div>
+      <h2>Every producer reinvents Iceberg. Multi-region makes it worse.</h2>
+
+      <div class="grid cols-3 mt-8">
+        <div class="card accent-cyan accent-left">
+          <h3 class="accent">Six stacks, six sets of quirks</h3>
+          <ul class="list tight mt-4">
+            <li>Glue / EMR PySpark, ECS / Lambda Python, ECS / Lambda Java</li>
+            <li>Each re-learns the same Iceberg configuration traps</li>
+            <li>No shared code, no shared review checklist</li>
+          </ul>
+        </div>
+        <div class="card accent-violet accent-left">
+          <h3 class="accent-violet">Multi-region under strict rules</h3>
+          <ul class="list tight mt-4">
+            <li>No cross-region S3. No MRAPs.</li>
+            <li>Metadata repointing is non-trivial and error-prone</li>
+            <li>Reference material assumes the opposite posture</li>
+          </ul>
+        </div>
+        <div class="card accent-emerald accent-left">
+          <h3 class="accent-emerald">No platform leverage</h3>
+          <ul class="list tight mt-4">
+            <li>Compaction / snapshot expiry / orphan cleanup diverge per team</li>
+            <li>Security review reopens from zero on every onboarding</li>
+            <li>Policy cannot be enforced in one place</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="mt-8 card" style="border-color: rgba(251,191,36,0.35);">
+        <div class="row">
+          <span class="mono small" style="color: var(--amber); letter-spacing: 0.1em;">RESULT</span>
+          <span style="font-size: 18px; font-weight: 700;">
+            10&ndash;12 person-weeks per producer &mdash; repeated across the mesh.
+          </span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 3. WHAT ICESHELF IS ===================== -->
+  <section class="slide" data-title="What Iceshelf is">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill all"><span class="pip"></span>All audiences</span>
+      </div>
+      <div class="eyebrow">What Iceshelf is</div>
+      <h2>A Claude Code plugin that writes Iceberg code into your repo.</h2>
+
+      <div class="grid cols-3 mt-8">
+        <div class="card accent-cyan accent-left">
+          <h3 class="accent">9 skills</h3>
+          <p class="mt-4">
+            Slash commands that drive each stage of onboarding &mdash; from profile
+            capture through multi-region DR.
+          </p>
+        </div>
+        <div class="card accent-violet accent-left">
+          <h3 class="accent-violet">5 subagents</h3>
+          <p class="mt-4">
+            Specialized reasoning: architect, code-generator, validator, multi-region
+            planner, orchestrator.
+          </p>
+        </div>
+        <div class="card accent-emerald accent-left">
+          <h3 class="accent-emerald">Presets + profiles</h3>
+          <p class="mt-4">
+            Org-wide policy as YAML. Each producer inherits it; only overrides go in
+            the profile.
+          </p>
+        </div>
+      </div>
+
+      <div class="card mt-8" style="border-color: rgba(251,191,36,0.4);">
+        <div class="row" style="align-items: flex-start;">
+          <div style="min-width: 160px;">
+            <span class="mono small" style="color: var(--amber); letter-spacing: 0.1em;">YOU GET BACK</span>
+          </div>
+          <div style="flex: 1;">
+            <p style="color: var(--text); font-size: 15px; line-height: 1.6;">
+              <b>PySpark / PyIceberg / Java pipeline code</b>
+              &nbsp;&middot;&nbsp; Terraform for S3 / Glue / IAM / KMS / VPC
+              &nbsp;&middot;&nbsp; <b>CloudWatch alarms + dashboards</b>
+              &nbsp;&middot;&nbsp; <b>DR runbook</b>
+              &nbsp;&mdash;&nbsp; all committed to your repo, reviewable in a normal PR.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 4. INTEGRATION ===================== -->
+  <section class="slide" data-title="Integration">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill mgmt"><span class="pip"></span>Leadership</span>
+        <span class="pill arch"><span class="pip"></span>Architect</span>
+        <span class="pill dev"><span class="pip"></span>Developer</span>
+      </div>
+      <div class="eyebrow">Integration &middot; how it plugs into your repo</div>
+      <h2>Claude Code runs locally. Files land in your repo. Your CI/CD deploys.</h2>
+
+      <div class="grid cols-2 mt-8">
+        <div class="card accent-emerald accent-left">
+          <div class="row space-between" style="margin-bottom: 10px;">
+            <div class="mono" style="color: var(--emerald); font-weight: 700;">producer-repo/</div>
+            <div class="mono small text-faint">cyan = files Iceshelf writes</div>
+          </div>
+          <pre class="code" style="font-size: 13px; line-height: 1.6;"><span class="c">&#9500;&#9472;</span> <span style="color: var(--text-dim);">src/</span>                       <span class="c"># your existing code</span>
+<span class="c">&#9500;&#9472;</span> <span style="color: var(--text-dim);">tests/</span>                     <span class="c"># your existing tests</span>
+<span class="c">&#9500;&#9472;</span> <span style="color: var(--text-dim);">.github/workflows/</span>         <span class="c"># your existing CI/CD</span>
+<span class="c">&#9474;</span>
+<span class="p">&#9500;&#9472;</span> <span class="p">profiles/&lt;producer&gt;.yaml</span>   <span style="color: var(--cyan);"># Iceshelf: org preset + overrides</span>
+<span class="p">&#9500;&#9472;</span> <span class="p">iceberg/</span>
+<span class="c">&#9474;  </span><span class="p">&#9500;&#9472;</span> <span class="p">ddl/*.sql</span>              <span style="color: var(--cyan);"># Iceshelf: table DDL</span>
+<span class="c">&#9474;  </span><span class="p">&#9500;&#9472;</span> <span class="p">pipeline/*.py</span>          <span style="color: var(--cyan);"># Iceshelf: ingest + upsert jobs</span>
+<span class="c">&#9474;  </span><span class="p">&#9492;&#9472;</span> <span class="p">maintenance/*.py</span>       <span style="color: var(--cyan);"># Iceshelf: compaction, expiry</span>
+<span class="p">&#9500;&#9472;</span> <span class="p">infra/iceberg/*.tf</span>         <span style="color: var(--cyan);"># Iceshelf: S3 / Glue / IAM / KMS</span>
+<span class="p">&#9492;&#9472;</span> <span class="p">runbooks/failover.md</span>       <span style="color: var(--cyan);"># Iceshelf: DR runbook</span></pre>
+        </div>
+
+        <div class="card accent-violet accent-left">
+          <h3 class="accent-violet">How it flows</h3>
+          <div class="mt-4" style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; gap: 12px; align-items: flex-start;">
+              <div style="min-width: 28px; height: 28px; border-radius: 50%; background: var(--violet); color: var(--bg-1); font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: 13px;">1</div>
+              <div>
+                <div style="font-weight: 700; font-size: 14px;">Install the Iceshelf plugin in your Claude Code CLI.</div>
+                <div class="small text-dim">Nothing leaves your machine. No account to sign up for.</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: flex-start;">
+              <div style="min-width: 28px; height: 28px; border-radius: 50%; background: var(--violet); color: var(--bg-1); font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: 13px;">2</div>
+              <div>
+                <div style="font-weight: 700; font-size: 14px;">Run <code class="mono" style="color: var(--cyan);">/iceberg-profile-setup</code> in the producer repo.</div>
+                <div class="small text-dim">Captures region, bucket, stack, DR posture &rarr; <code class="mono">profiles/&lt;producer&gt;.yaml</code>.</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: flex-start;">
+              <div style="min-width: 28px; height: 28px; border-radius: 50%; background: var(--violet); color: var(--bg-1); font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: 13px;">3</div>
+              <div>
+                <div style="font-weight: 700; font-size: 14px;">Run <code class="mono" style="color: var(--cyan);">/iceberg-onboard</code> &mdash; orchestrator drives the rest.</div>
+                <div class="small text-dim">Generates DDL, pipeline code, IaC, runbooks into the tree on the left.</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: flex-start;">
+              <div style="min-width: 28px; height: 28px; border-radius: 50%; background: var(--violet); color: var(--bg-1); font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: 13px;">4</div>
+              <div>
+                <div style="font-weight: 700; font-size: 14px;">Review the PR. You own every line.</div>
+                <div class="small text-dim">Your existing CI/CD deploys exactly as it does for any other code change.</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: flex-start;">
+              <div style="min-width: 28px; height: 28px; border-radius: 50%; background: var(--violet); color: var(--bg-1); font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: 13px;">5</div>
+              <div>
+                <div style="font-weight: 700; font-size: 14px;">Ongoing: slash commands for day-2 operations.</div>
+                <div class="small text-dim">Schema evolution, multi-region, maintenance &mdash; same pattern, same repo.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-6 text-center mono small text-faint" style="letter-spacing: 0.04em;">
+        Iceshelf never runs at your runtime &middot; Iceshelf never sees your data &middot; Iceshelf has no cloud account of its own.
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 5. PRODUCER JOURNEY ===================== -->
+  <section class="slide" data-title="Producer journey">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill arch"><span class="pip"></span>Architect</span>
+        <span class="pill dev"><span class="pip"></span>Developer</span>
+      </div>
+      <div class="eyebrow">Producer journey &middot; skills &amp; agents at each stage</div>
+      <h2>Five phases. Each with a skill you run and an agent that drives it.</h2>
+
+      <div class="mt-8" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;">
+        <!-- Phase 1 -->
+        <div class="card accent-cyan accent-left">
+          <div class="mono small" style="color: var(--cyan); letter-spacing: 0.1em;">01</div>
+          <h3 style="margin-top: 4px;">Profile</h3>
+          <div class="divider" style="margin: 12px 0;"></div>
+          <div class="mono small text-faint" style="letter-spacing: 0.1em;">OUTPUT</div>
+          <div class="mono small mt-2" style="color: var(--text-dim);">profiles/&lt;producer&gt;.yaml</div>
+          <div class="mono small text-faint mt-4" style="letter-spacing: 0.1em;">SKILL</div>
+          <div class="mono small mt-2" style="color: var(--cyan); font-weight: 700;">/iceberg-profile-setup</div>
+          <div class="mono small text-faint mt-4" style="letter-spacing: 0.1em;">AGENT</div>
+          <div class="small mt-2" style="font-style: italic;">iceberg-architect (validates)</div>
+        </div>
+        <!-- Phase 2 -->
+        <div class="card accent-violet accent-left">
+          <div class="mono small" style="color: var(--violet); letter-spacing: 0.1em;">02</div>
+          <h3 style="margin-top: 4px;">Assess</h3>
+          <div class="divider" style="margin: 12px 0;"></div>
+          <div class="mono small text-faint" style="letter-spacing: 0.1em;">OUTPUT</div>
+          <div class="mono small mt-2" style="color: var(--text-dim);">assessment report<br/>(existing &rarr; target)</div>
+          <div class="mono small text-faint mt-4" style="letter-spacing: 0.1em;">SKILL</div>
+          <div class="mono small mt-2" style="color: var(--violet); font-weight: 700;">/iceberg-onboard</div>
+          <div class="mono small text-faint mt-4" style="letter-spacing: 0.1em;">AGENT</div>
+          <div class="small mt-2" style="font-style: italic;">iceberg-orchestrator<br/>&rarr; iceberg-architect</div>
+        </div>
+        <!-- Phase 3 -->
+        <div class="card accent-emerald accent-left">
+          <div class="mono small" style="color: var(--emerald); letter-spacing: 0.1em;">03</div>
+          <h3 style="margin-top: 4px;">Generate</h3>
+          <div class="divider" style="margin: 12px 0;"></div>
+          <div class="mono small text-faint" style="letter-spacing: 0.1em;">OUTPUT</div>
+          <div class="mono small mt-2" style="color: var(--text-dim);">iceberg/ddl<br/>iceberg/pipeline<br/>infra/iceberg/*.tf</div>
+          <div class="mono small text-faint mt-4" style="letter-spacing: 0.1em;">SKILL</div>
+          <div class="mono small mt-2" style="color: var(--emerald); font-weight: 700;">/iceberg-ddl<br/>/iceberg-pipeline<br/>/iceberg-data<br/>/iceberg-maintenance</div>
+          <div class="mono small text-faint mt-4" style="letter-spacing: 0.1em;">AGENT</div>
+          <div class="small mt-2" style="font-style: italic;">iceberg-code-generator</div>
+        </div>
+        <!-- Phase 4 -->
+        <div class="card accent-amber accent-left">
+          <div class="mono small" style="color: var(--amber); letter-spacing: 0.1em;">04</div>
+          <h3 style="margin-top: 4px;">Multi-region</h3>
+          <div class="divider" style="margin: 12px 0;"></div>
+          <div class="mono small text-faint" style="letter-spacing: 0.1em;">OUTPUT</div>
+          <div class="mono small mt-2" style="color: var(--text-dim);">repoint utility<br/>DR runbook<br/>CRR Terraform</div>
+          <div class="mono small text-faint mt-4" style="letter-spacing: 0.1em;">SKILL</div>
+          <div class="mono small mt-2" style="color: var(--amber); font-weight: 700;">/iceberg-multi-region</div>
+          <div class="mono small text-faint mt-4" style="letter-spacing: 0.1em;">AGENT</div>
+          <div class="small mt-2" style="font-style: italic;">iceberg-multi-<br/>region-planner</div>
+        </div>
+        <!-- Phase 5 -->
+        <div class="card accent-cyan accent-left">
+          <div class="mono small" style="color: var(--cyan); letter-spacing: 0.1em;">05</div>
+          <h3 style="margin-top: 4px;">Promote</h3>
+          <div class="divider" style="margin: 12px 0;"></div>
+          <div class="mono small text-faint" style="letter-spacing: 0.1em;">OUTPUT</div>
+          <div class="mono small mt-2" style="color: var(--text-dim);">diagnostics clean<br/>pilot-to-prod<br/>sign-off</div>
+          <div class="mono small text-faint mt-4" style="letter-spacing: 0.1em;">SKILL</div>
+          <div class="mono small mt-2" style="color: var(--cyan); font-weight: 700;">/iceberg-info<br/>/iceberg-migrate *</div>
+          <div class="mono small text-faint mt-4" style="letter-spacing: 0.1em;">AGENT</div>
+          <div class="small mt-2" style="font-style: italic;">iceberg-validator</div>
+        </div>
+      </div>
+
+      <div class="mt-6 small text-faint" style="font-style: italic;">
+        * <code class="mono">/iceberg-migrate</code> is used only when the producer is moving an existing Parquet table.
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 6. MULTI-REGION ===================== -->
+  <section class="slide" data-title="Multi-region">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill arch"><span class="pip"></span>Architect</span>
+        <span class="pill mgmt"><span class="pip"></span>Leadership</span>
+      </div>
+      <div class="eyebrow">Multi-region &middot; the differentiator</div>
+      <h2>DR resilience without cross-region S3 or MRAPs.</h2>
+
+      <div class="mr mt-8">
+        <div class="region-card">
+          <div class="head"><span class="r">Primary</span><h3>us-east-1</h3></div>
+          <div class="layer">
+            <div class="ic">S3</div>
+            <div class="ltxt"><h4>Warehouse bucket</h4><p>Data + metadata written locally.</p></div>
+          </div>
+          <div class="layer">
+            <div class="ic">G</div>
+            <div class="ltxt"><h4>Glue Data Catalog</h4><p>Table registered with primary <code class="mono">metadata_location</code>.</p></div>
+          </div>
+          <div class="layer">
+            <div class="ic">&lambda;</div>
+            <div class="ltxt"><h4>Ingest job</h4><p><code class="mono">glue.region</code> + <code class="mono">s3.region</code> pinned locally.</p></div>
+          </div>
+        </div>
+
+        <div class="mr-link">
+          <div class="label">S3 Cross-Region<br/>Replication</div>
+          <svg width="100" height="40" viewBox="0 0 100 40" fill="none">
+            <defs>
+              <linearGradient id="arr2" x1="0" x2="1" y1="0" y2="0">
+                <stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#a78bfa"/>
+              </linearGradient>
+            </defs>
+            <path d="M5 20h82M80 10l10 10-10 10" stroke="url(#arr2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>
+          <div class="label text-faint">object-level,<br/>eventually consistent</div>
+          <svg width="100" height="28" viewBox="0 0 100 28" fill="none" style="margin-top: 14px;">
+            <path d="M92 14H8M18 6L8 14l10 10" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>
+          <div class="label" style="color: var(--amber);">metadata repointing<br/>rewrites S3 paths</div>
+        </div>
+
+        <div class="region-card dr">
+          <div class="head"><span class="r">DR</span><h3>us-west-2</h3></div>
+          <div class="layer">
+            <div class="ic">S3</div>
+            <div class="ltxt"><h4>Replicated bucket</h4><p>Same keyspace. Local copies of data + metadata.</p></div>
+          </div>
+          <div class="layer">
+            <div class="ic">&lambda;</div>
+            <div class="ltxt"><h4>Repointing utility</h4><p>Rewrites <code class="mono">metadata.json</code>, manifest-list, manifests.</p></div>
+          </div>
+          <div class="layer">
+            <div class="ic">G</div>
+            <div class="ltxt"><h4>Local Glue catalog</h4><p>Queryable in-region &mdash; zero cross-region I/O.</p></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid cols-2 mt-6">
+        <div class="card accent-emerald accent-left">
+          <h3 class="accent-emerald">Recovery targets (default profile)</h3>
+          <p class="mt-2" style="font-size: 14px;">
+            <b class="mono" style="color: var(--emerald);">RPO &le; 20 min</b>
+            &nbsp;&middot;&nbsp;
+            <b class="mono" style="color: var(--emerald);">RTO &le; 60 min</b>
+            &nbsp;&middot;&nbsp;
+            <span class="mono">repoint every 15 min</span>
+          </p>
+          <p class="small text-faint mt-2">Tunable per profile &mdash; CloudWatch alarms generated to prove the numbers.</p>
+        </div>
+        <div class="card accent-cyan accent-left">
+          <h3 class="accent">Guarantees</h3>
+          <div class="mt-2 small" style="line-height: 1.8;">
+            <span style="color: var(--emerald); font-weight: 700;">&#10003;</span> Zero cross-region I/O &nbsp;
+            <span style="color: var(--emerald); font-weight: 700;">&#10003;</span> No MRAPs &nbsp;
+            <span style="color: var(--emerald); font-weight: 700;">&#10003;</span> Per-region catalog<br/>
+            <span style="color: var(--emerald); font-weight: 700;">&#10003;</span> Atomic repointing &nbsp;
+            <span style="color: var(--emerald); font-weight: 700;">&#10003;</span> Auditable runbook &nbsp;
+            <span style="color: var(--emerald); font-weight: 700;">&#10003;</span> Game-day tested
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 7. SKILLS & SUBAGENTS ===================== -->
+  <section class="slide" data-title="Skills &amp; subagents">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill dev"><span class="pip"></span>Developer</span>
+        <span class="pill arch"><span class="pip"></span>Architect</span>
+      </div>
+      <div class="eyebrow">Skills &amp; subagents &middot; cheat sheet</div>
+      <h2>What&rsquo;s in the box.</h2>
+
+      <div class="grid cols-2 mt-8" style="grid-template-columns: 1.4fr 1fr;">
+        <div>
+          <h3 class="accent mb-4">Skills &mdash; slash commands you run</h3>
+          <table class="t">
+            <thead><tr><th>Skill</th><th>Purpose</th></tr></thead>
+            <tbody>
+              <tr><td><code>/iceberg-profile-setup</code></td><td>Capture producer conventions</td></tr>
+              <tr><td><code>/iceberg-onboard</code></td><td>End-to-end orchestrator entry</td></tr>
+              <tr><td><code>/iceberg-ddl</code></td><td>Tables + schema evolution</td></tr>
+              <tr><td><code>/iceberg-data</code></td><td>Insert / upsert / delete</td></tr>
+              <tr><td><code>/iceberg-maintenance</code></td><td>Compaction, expiry, cleanup</td></tr>
+              <tr><td><code>/iceberg-info</code></td><td>Diagnostics + metadata</td></tr>
+              <tr><td><code>/iceberg-migrate</code></td><td>Parquet / Hive &rarr; Iceberg</td></tr>
+              <tr><td><code>/iceberg-multi-region</code></td><td>CRR + repoint + DR catalog</td></tr>
+              <tr><td><code>/iceberg-pipeline</code></td><td>End-to-end pipeline gen</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div>
+          <h3 class="accent-violet mb-4">Subagents &mdash; specialist reasoning</h3>
+          <table class="t">
+            <thead><tr><th>Name</th><th>Role</th></tr></thead>
+            <tbody>
+              <tr><td><code>orchestrator</code></td><td>Coordinates end-to-end</td></tr>
+              <tr><td><code>architect</code></td><td>Design + assessment</td></tr>
+              <tr><td><code>code-generator</code></td><td>Stack-specific code</td></tr>
+              <tr><td><code>validator</code></td><td>Checks before deploy</td></tr>
+              <tr><td><code>multi-region-planner</code></td><td>DR + repoint strategy</td></tr>
+            </tbody>
+          </table>
+
+          <div class="card accent-emerald accent-left mt-6">
+            <h3 class="accent-emerald">All share one profile</h3>
+            <p class="small mt-2">
+              Every skill and subagent reads <code class="mono">profiles/&lt;producer&gt;.yaml</code>.
+              Producers answer questions once, not per-skill.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 8. SECURITY & COMPLIANCE ===================== -->
+  <section class="slide" data-title="Security &amp; compliance">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill arch"><span class="pip"></span>Architect</span>
+        <span class="pill mgmt"><span class="pip"></span>Leadership</span>
+      </div>
+      <div class="eyebrow">Security &amp; compliance</div>
+      <h2>Defensible by default &mdash; built for security review, not around it.</h2>
+
+      <div class="grid cols-4 mt-8">
+        <div class="card accent-cyan accent-left">
+          <h3 class="accent">Identity</h3>
+          <ul class="list tight mt-4 small">
+            <li>IAM scoped to DB + table ARNs</li>
+            <li>Never <code>"*"</code> in generated policies</li>
+            <li>Read / write / maint roles split</li>
+            <li>Lake Formation supported</li>
+          </ul>
+        </div>
+        <div class="card accent-violet accent-left">
+          <h3 class="accent-violet">Encryption</h3>
+          <ul class="list tight mt-4 small">
+            <li>S3 = <code>aws:kms</code> by default</li>
+            <li>CMK alias pinned in profile</li>
+            <li>Per-producer key isolation</li>
+            <li>Key-grant list scripted</li>
+          </ul>
+        </div>
+        <div class="card accent-emerald accent-left">
+          <h3 class="accent-emerald">Network</h3>
+          <ul class="list tight mt-4 small">
+            <li>VPC endpoints: S3 / Glue / STS</li>
+            <li>KMS + CloudWatch private</li>
+            <li>No public egress required</li>
+            <li>Private-subnet-only supported</li>
+          </ul>
+        </div>
+        <div class="card accent-amber accent-left">
+          <h3 style="color: var(--amber);">Audit</h3>
+          <ul class="list tight mt-4 small">
+            <li>Profile + code diff-reviewable</li>
+            <li>Required tags enforced</li>
+            <li>Optional WORM audit bucket</li>
+            <li>Retention windows explicit</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="mt-8 card">
+        <div class="row space-between">
+          <div class="mono small" style="color: var(--cyan); letter-spacing: 0.12em;">FRAMEWORK ALIGNMENT</div>
+          <div class="small">
+            <b class="accent">SOC 2</b> &middot;
+            <b class="accent-violet">HIPAA / PHI</b> &middot;
+            <b class="accent-emerald">PCI-DSS</b> &middot;
+            <b style="color: var(--amber);">FedRAMP / GovCloud</b>
+            &nbsp;&mdash;&nbsp;
+            <span class="text-dim" style="font-style: italic;">aligned by design; artifacts portable to GovCloud with a profile swap.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 9. WHAT SHIPS IN v1.0 ===================== -->
+  <section class="slide" data-title="What ships in v1.0">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill mgmt"><span class="pip"></span>Leadership</span>
+        <span class="pill arch"><span class="pip"></span>Architect</span>
+      </div>
+      <div class="eyebrow">What ships in v1.0</div>
+      <h2>Six stacks. One quality bar.</h2>
+
+      <table class="t mt-8">
+        <thead>
+          <tr>
+            <th>Capability</th>
+            <th style="color: var(--cyan);">Glue PySpark</th>
+            <th style="color: var(--cyan);">EMR PySpark</th>
+            <th style="color: var(--emerald);">ECS Py</th>
+            <th style="color: var(--emerald);">Lambda Py</th>
+            <th style="color: var(--violet);">ECS Java</th>
+            <th style="color: var(--violet);">Lambda Java</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>DDL + schema evolution</td>    <td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+          <tr><td>Insert / upsert / delete</td>  <td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+          <tr><td>Compaction + expiry</td>       <td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+          <tr><td>Multi-region + repoint</td>    <td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+          <tr><td>IaC (Terraform)</td>           <td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+          <tr><td>DR runbook generated</td>      <td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+        </tbody>
+      </table>
+
+      <div class="grid cols-3 mt-8">
+        <div class="card accent-cyan accent-left">
+          <h3 class="accent">100% code is yours</h3>
+          <p class="small mt-2">No runtime service. Stop using Iceshelf &mdash; keep every file.</p>
+        </div>
+        <div class="card accent-emerald accent-left">
+          <h3 class="accent-emerald">Apache-2.0</h3>
+          <p class="small mt-2">No licence gate. Fork it, extend it, bring it in-house.</p>
+        </div>
+        <div class="card accent-amber accent-left">
+          <h3 style="color: var(--amber);">No SaaS ingress / egress</h3>
+          <p class="small mt-2">Nothing from Iceshelf sits on your data path.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 10. PILOT ===================== -->
+  <section class="slide" data-title="Pilot proposal">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill mgmt"><span class="pip"></span>Leadership</span>
+      </div>
+      <div class="eyebrow">The ask &middot; 90-day pilot</div>
+      <h2>Two producers. One quarter. Clear decision gate at week 12.</h2>
+
+      <div class="grid cols-2 mt-8">
+        <div class="card accent-cyan accent-left">
+          <h3 class="accent">Scope</h3>
+          <ul class="list tight mt-4 small">
+            <li>Two producers &mdash; one PySpark, one PyIceberg</li>
+            <li>One region pair (e.g. us-east-1 / us-west-2)</li>
+            <li>One preset (<code class="mono">aws-glue-datamesh-strict</code> by default)</li>
+            <li>Dry-run first &mdash; PR-reviewed in sandbox before prod</li>
+          </ul>
+        </div>
+        <div class="card accent-violet accent-left">
+          <h3 class="accent-violet">Timeline</h3>
+          <table class="t mt-2">
+            <tbody>
+              <tr><td class="mono">Wk 1&ndash;2</td><td>Preset sign-off; sandbox; profiles</td></tr>
+              <tr><td class="mono">Wk 3&ndash;7</td><td>Producer #1: onboard &rarr; ingest &rarr; multi-region</td></tr>
+              <tr><td class="mono">Wk 8&ndash;9</td><td>Producer #2 on same preset (reuse proof)</td></tr>
+              <tr><td class="mono">Wk 10</td><td>Game-day: simulated primary-region outage</td></tr>
+              <tr><td class="mono">Wk 11&ndash;12</td><td>Security / cost review &rarr; go/no-go gate</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card accent-emerald accent-left">
+          <h3 class="accent-emerald">Exit criteria (all must pass)</h3>
+          <ul class="list tight mt-4 small">
+            <li>Both producers in production, zero hand-edits</li>
+            <li>&le; 2 person-weeks / producer (vs 10&ndash;12 DIY)</li>
+            <li>RPO &le; 20 min and RTO &le; 60 min on game-day</li>
+            <li>Security + cost review signed off</li>
+          </ul>
+        </div>
+        <div class="card accent-amber accent-left">
+          <h3 style="color: var(--amber);">What we need from you</h3>
+          <ul class="list tight mt-4 small">
+            <li>Executive sponsor (clears org-level blockers)</li>
+            <li>Platform-team lead: 0.5 FTE &times; 12 weeks</li>
+            <li>Two producer teams: ~0.25 FTE each</li>
+            <li>Sandbox AWS account with target region pair</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 11. NEXT STEPS ===================== -->
+  <section class="slide" data-title="Next steps">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill all"><span class="pip"></span>All audiences</span>
+      </div>
+      <div class="eyebrow">Next steps</div>
+      <h2>One action for each audience.</h2>
+
+      <div class="grid cols-3 mt-8">
+        <div class="card accent-amber accent-left">
+          <span class="pill mgmt" style="margin-bottom: 14px;"><span class="pip"></span>Leadership</span>
+          <h3>What to do next</h3>
+          <ul class="list tight mt-4">
+            <li>Approve Iceberg as the mesh-wide table format</li>
+            <li>Sponsor the 2-producer pilot next quarter</li>
+            <li>Designate platform owner for preset policy</li>
+          </ul>
+        </div>
+        <div class="card accent-violet accent-left">
+          <span class="pill arch" style="margin-bottom: 14px;"><span class="pip"></span>Architect</span>
+          <h3>What to do next</h3>
+          <ul class="list tight mt-4">
+            <li>Review <code>docs/admin-guide.md</code></li>
+            <li>Pick the preset (strict or central-lake)</li>
+            <li>Define wave-rollout policy</li>
+          </ul>
+        </div>
+        <div class="card accent-emerald accent-left">
+          <span class="pill dev" style="margin-bottom: 14px;"><span class="pip"></span>Developer</span>
+          <h3>What to do next</h3>
+          <ul class="list tight mt-4">
+            <li>Read the recipe for your stack</li>
+            <li>Run <code>/iceberg-profile-setup</code> in your repo</li>
+            <li>Run <code>/iceberg-onboard</code> and review the PR</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="row space-between">
+        <div>
+          <div class="mono small text-faint">Repository</div>
+          <div style="font-size: 22px; font-weight: 700;" class="accent">github.com/&lt;org&gt;/Iceshelf</div>
+        </div>
+        <div style="text-align: right;">
+          <div class="mono small text-faint">Release</div>
+          <div style="font-size: 22px; font-weight: 700;">v1.0.0 &middot; Apache-2.0</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div class="bottombar">
+  <div class="dotnav" id="dotnav"></div>
+</div>
+
+<div class="navhint">
+  <kbd>&larr;</kbd> <kbd>&rarr;</kbd> navigate &middot; <kbd>Home</kbd> / <kbd>End</kbd> first/last &middot; <kbd>F</kbd> fullscreen
+</div>
+
+<script>
+(function () {
+  var slides   = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var dotnav   = document.getElementById('dotnav');
+  var progress = document.getElementById('progress');
+  var scCur    = document.getElementById('sc-cur');
+  var scTot    = document.getElementById('sc-tot');
+  var scTitle  = document.getElementById('sc-title');
+
+  var total = slides.length;
+  scTot.textContent = String(total).padStart(2, '0');
+
+  var dots = [];
+  slides.forEach(function (_, i) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.title = 'Slide ' + (i + 1);
+    b.addEventListener('click', function () { go(i); });
+    dotnav.appendChild(b);
+    dots.push(b);
+  });
+
+  var idx = 0;
+  function go(next) {
+    idx = Math.max(0, Math.min(total - 1, next));
+    slides.forEach(function (s, i) { s.classList.toggle('active', i === idx); });
+    dots.forEach(function (d, i)   { d.classList.toggle('active', i === idx); });
+    scCur.textContent = String(idx + 1).padStart(2, '0');
+    if (scTitle) { scTitle.textContent = slides[idx].getAttribute('data-title') || ''; }
+    progress.style.transform = 'scaleX(' + ((idx + 1) / total) + ')';
+    if (location.hash !== '#s' + (idx + 1)) {
+      history.replaceState(null, '', '#s' + (idx + 1));
+    }
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    switch (e.key) {
+      case 'ArrowRight':
+      case 'PageDown':
+      case ' ':
+        e.preventDefault(); go(idx + 1); break;
+      case 'ArrowLeft':
+      case 'PageUp':
+        e.preventDefault(); go(idx - 1); break;
+      case 'Home':
+        e.preventDefault(); go(0); break;
+      case 'End':
+        e.preventDefault(); go(total - 1); break;
+      case 'f':
+      case 'F':
+        e.preventDefault();
+        if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen();
+        } else if (document.fullscreenElement && document.exitFullscreen) {
+          document.exitFullscreen();
+        }
+        break;
+    }
+  });
+
+  // Touch swipe
+  var tx = null;
+  document.addEventListener('touchstart', function (e) { tx = e.touches[0].clientX; }, { passive: true });
+  document.addEventListener('touchend',   function (e) {
+    if (tx == null) return;
+    var dx = e.changedTouches[0].clientX - tx;
+    if (Math.abs(dx) > 50) { go(idx + (dx < 0 ? 1 : -1)); }
+    tx = null;
+  }, { passive: true });
+
+  // Deep link on load
+  var m = /^#s(\d+)$/.exec(location.hash);
+  if (m) { go(parseInt(m[1], 10) - 1); } else { go(0); }
+
+  // Export for debugging
+  window.__deck = { go: go, total: total };
+})();
+</script>
+
+</body>
+</html>
