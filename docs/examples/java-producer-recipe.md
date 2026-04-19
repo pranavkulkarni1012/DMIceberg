@@ -2,7 +2,7 @@
 
 Copy-pasteable flow for a Java producer on ECS or Lambda using `iceberg-core` + `iceberg-aws`.
 
-**Read [`docs/using-dmiceberg.md`](../using-dmiceberg.md) first.** This recipe assumes you understand the 8-phase lifecycle and skill reference.
+**Read [`docs/using-iceshelf.md`](../using-iceshelf.md) first.** This recipe assumes you understand the 8-phase lifecycle and skill reference.
 
 ---
 

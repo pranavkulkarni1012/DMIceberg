@@ -5,10 +5,10 @@ description: "One-time onboarding that captures a producer's conventions (region
 # Iceberg Profile Setup
 
 ## Goal
-Capture a producer's conventions in a single YAML file at `profiles/<producer-name>.yaml` so every other DMIceberg skill reads from it instead of asking the producer the same questions repeatedly.
+Capture a producer's conventions in a single YAML file at `profiles/<producer-name>.yaml` so every other Iceshelf skill reads from it instead of asking the producer the same questions repeatedly.
 
 ## When to run
-- **First** time a producer uses DMIceberg (before `/iceberg-onboard`)
+- **First** time a producer uses Iceshelf (before `/iceberg-onboard`)
 - When a producer's conventions change (region pair, tech stack, orchestrator)
 - When upgrading to a new org preset version
 
@@ -130,7 +130,7 @@ Confirm the profile path they should reference: `profiles/<producer-name>.yaml`.
 Suggest the producer commit the profile YAML to their repo. Example message:
 
 ```
-Add DMIceberg profile for <producer-name>
+Add Iceshelf profile for <producer-name>
 
 Preset: aws-glue-datamesh-strict
 Region pair: us-east-1 / us-west-2

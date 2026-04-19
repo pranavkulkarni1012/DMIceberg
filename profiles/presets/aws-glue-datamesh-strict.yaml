@@ -56,7 +56,7 @@ governance:
     migrate_requires_ticket: true
 
 observability:
-  metrics_namespace: "DMIceberg"
+  metrics_namespace: "Iceshelf"
   alarms:
     commit_failure_threshold: 5
     commit_failure_window_minutes: 15

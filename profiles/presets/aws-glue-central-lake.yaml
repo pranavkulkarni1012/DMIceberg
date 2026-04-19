@@ -61,7 +61,7 @@ governance:
     migrate_requires_ticket: false
 
 observability:
-  metrics_namespace: "DMIceberg"
+  metrics_namespace: "Iceshelf"
   alarms:
     commit_failure_threshold: 10              # higher threshold — central lake has more concurrent writers
     commit_failure_window_minutes: 15

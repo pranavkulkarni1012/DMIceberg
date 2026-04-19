@@ -1,8 +1,8 @@
-# DMIceberg
+# Iceshelf
 
 **Apache Iceberg onboarding platform for AWS Data Mesh producers.**
 
-DMIceberg is a set of [Claude Code](https://claude.com/claude-code) skills and specialized subagents that take an AWS producer — whether they're running Glue PySpark, EMR PySpark, ECS/Lambda Python (PyIceberg), or ECS/Lambda Java — from Parquet to a production Iceberg table on AWS Glue Data Catalog, including multi-region resilience. It is opinionated about Iceberg format-version 2, AWS Glue as the catalog, and the multi-region constraint that cross-region S3 access and Multi-Region Access Points are not permitted.
+Iceshelf is a set of [Claude Code](https://claude.com/claude-code) skills and specialized subagents that take an AWS producer — whether they're running Glue PySpark, EMR PySpark, ECS/Lambda Python (PyIceberg), or ECS/Lambda Java — from Parquet to a production Iceberg table on AWS Glue Data Catalog, including multi-region resilience. It is opinionated about Iceberg format-version 2, AWS Glue as the catalog, and the multi-region constraint that cross-region S3 access and Multi-Region Access Points are not permitted.
 
 It is **not** a runtime library. It is a workflow package: you install it as a Claude Code plugin, run the skills against your own producer repo, and get back production-ready code, Terraform, and runbooks.
 
@@ -24,7 +24,7 @@ It is **not** a runtime library. It is a workflow package: you install it as a C
 | Multi-region DR            | `/iceberg-multi-region` (S3 CRR + metadata repointing + Glue registration) |
 | Per-producer tenant profile| `/iceberg-profile-setup` → `profiles/<producer-name>.yaml`  |
 | Admin playbook             | `docs/admin-guide.md` (rollout waves, gating, incident patterns) |
-| User playbook              | `docs/using-dmiceberg.md` (phase model, skills reference)   |
+| User playbook              | `docs/using-iceshelf.md` (phase model, skills reference)   |
 | Stack-specific recipes     | `docs/examples/{pyspark,pyiceberg,java}-producer-recipe.md` |
 
 ## Scope (v1.0)
@@ -54,13 +54,13 @@ Out of scope for v1:
    ```
    Answer the questions; you'll get a deployment-ready package (table DDL, pipeline code, maintenance job, IAM, multi-region setup if requested, rollback plan).
 
-Producers who prefer step-by-step control can run the individual skills instead — see [`docs/using-dmiceberg.md`](docs/using-dmiceberg.md).
+Producers who prefer step-by-step control can run the individual skills instead — see [`docs/using-iceshelf.md`](docs/using-iceshelf.md).
 
 ## Documentation
 
 | Audience           | Document                                        |
 |---                 |---                                              |
-| Producer (first read) | [`docs/using-dmiceberg.md`](docs/using-dmiceberg.md) |
+| Producer (first read) | [`docs/using-iceshelf.md`](docs/using-iceshelf.md) |
 | Platform team      | [`docs/admin-guide.md`](docs/admin-guide.md)    |
 | PySpark producer   | [`docs/examples/pyspark-producer-recipe.md`](docs/examples/pyspark-producer-recipe.md) |
 | PyIceberg producer | [`docs/examples/pyiceberg-producer-recipe.md`](docs/examples/pyiceberg-producer-recipe.md) |
@@ -85,7 +85,7 @@ profiles/
   schema.md                  # Profile field reference
   presets/                   # Built-in org presets (strict / central-lake)
 docs/
-  using-dmiceberg.md         # End-user guide
+  using-iceshelf.md         # End-user guide
   admin-guide.md             # Platform-team guide
   examples/                  # Stack-specific recipes
 CLAUDE.md                    # Project conventions (auto-loaded by Claude Code)
@@ -94,7 +94,7 @@ CHANGELOG.md                 # Release notes
 
 ## Versioning & support
 
-- DMIceberg follows [Semantic Versioning](https://semver.org/).
+- Iceshelf follows [Semantic Versioning](https://semver.org/).
 - Released on the schedule tracked in [`CHANGELOG.md`](CHANGELOG.md).
 - Current version: `1.0.0`.
 

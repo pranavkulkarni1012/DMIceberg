@@ -1,6 +1,6 @@
-# DMIceberg Admin Guide
+# Iceshelf Admin Guide
 
-For platform teams deploying DMIceberg across many producers. This is **not** for individual producers — they follow their tech-stack recipe in [`docs/examples/`](./examples/).
+For platform teams deploying Iceshelf across many producers. This is **not** for individual producers — they follow their tech-stack recipe in [`docs/examples/`](./examples/).
 
 ---
 
@@ -18,11 +18,11 @@ Individual producer teams are your customers here. The skills they use are the o
 
 ## 2. Operating model
 
-DMIceberg is deployed per-repository. There are two common patterns:
+Iceshelf is deployed per-repository. There are two common patterns:
 
 ### Pattern A: Shared platform repo (recommended)
 
-- Platform team owns a single DMIceberg repo
+- Platform team owns a single Iceshelf repo
 - Producers link it as a git submodule or subtree into their own repo
 - Producer's CLAUDE.md points at the submodule location
 - Platform team ships updates via PRs; producers pull updates on their cadence
@@ -31,7 +31,7 @@ DMIceberg is deployed per-repository. There are two common patterns:
 
 ### Pattern B: Per-producer copy
 
-- Each producer copies DMIceberg into their own repo
+- Each producer copies Iceshelf into their own repo
 - No automated updates — producers cherry-pick fixes
 
 **Pros:** full autonomy. **Cons:** platform team's fixes never propagate; fleet drifts.
@@ -74,7 +74,7 @@ governance:
   audit_bucket: s3://acme-audit-central/iceberg-events/
 
 observability:
-  metrics_namespace: "ACME/DMIceberg"
+  metrics_namespace: "ACME/Iceshelf"
   alarms:
     commit_failure_threshold: 5          # alarm if >5 CommitFailedException per 15min
     repointing_latency_threshold_seconds: 1800

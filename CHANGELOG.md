@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to DMIceberg are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes to Iceshelf are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [1.0.0] — 2026-04-19
 
@@ -43,7 +43,7 @@ Initial product release. Scope: AWS Glue Data Catalog only. Storage: S3 only. Ic
 
 ### Documentation
 
-- `docs/using-dmiceberg.md` — generic user guide (phase model, skills, agents, multi-region, rollback, troubleshooting)
+- `docs/using-iceshelf.md` — generic user guide (phase model, skills, agents, multi-region, rollback, troubleshooting)
 - `docs/admin-guide.md` — platform-team guide (operating model, profiles, gating, rollout, observability, incidents)
 - `docs/examples/pyspark-producer-recipe.md` — Glue/EMR PySpark recipe
 - `docs/examples/pyiceberg-producer-recipe.md` — ECS/Lambda Python recipe

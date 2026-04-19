@@ -2,7 +2,7 @@
 
 Copy-pasteable flow for a PySpark producer (Glue or EMR) migrating Parquet → Iceberg with multi-region resilience.
 
-**Read [`docs/using-dmiceberg.md`](../using-dmiceberg.md) first.** This recipe assumes you understand the 8-phase lifecycle, the platform constraints, and the skill reference. Everything below is stack-specific glue.
+**Read [`docs/using-iceshelf.md`](../using-iceshelf.md) first.** This recipe assumes you understand the 8-phase lifecycle, the platform constraints, and the skill reference. Everything below is stack-specific glue.
 
 ---
 

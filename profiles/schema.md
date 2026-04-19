@@ -1,6 +1,6 @@
 # Profile Schema
 
-A **profile** captures the conventions and constraints of a DMIceberg deployment. Every skill reads the profile so producers don't re-answer the same questions per invocation.
+A **profile** captures the conventions and constraints of a Iceshelf deployment. Every skill reads the profile so producers don't re-answer the same questions per invocation.
 
 Profiles live in `profiles/<producer-name>.yaml`. Presets live in `profiles/presets/` and are referenced via `extends:`.
 
@@ -100,7 +100,7 @@ maintenance:
 
 ```yaml
 kms:
-  default_key_alias: alias/dmiceberg-tables
+  default_key_alias: alias/iceshelf-tables
   bucket_encryption: aws:kms                # aws:kms | AES256
   grantees:
     - arn:aws:iam::123456789012:role/producer-role
@@ -135,7 +135,7 @@ governance:
 
 ```yaml
 observability:
-  metrics_namespace: "Org/DMIceberg"
+  metrics_namespace: "Org/Iceshelf"
   alarms:
     commit_failure_threshold: 5
     commit_failure_window_minutes: 15

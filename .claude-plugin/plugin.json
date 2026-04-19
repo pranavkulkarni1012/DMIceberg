@@ -1,9 +1,9 @@
 {
-  "name": "dmiceberg",
+  "name": "iceshelf",
   "version": "1.0.0",
   "description": "Claude Code skills and subagents for migrating AWS Data Mesh producers from Parquet to Apache Iceberg, with multi-region resilience. Covers Glue PySpark, EMR PySpark, ECS/Lambda Python (PyIceberg), and ECS/Lambda Java stacks against AWS Glue Data Catalog.",
   "author": {
-    "name": "DMIceberg"
+    "name": "Iceshelf"
   },
   "keywords": [
     "iceberg",

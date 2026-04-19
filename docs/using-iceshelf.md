@@ -1,12 +1,12 @@
-# Using DMIceberg
+# Using Iceshelf
 
-DMIceberg is a set of Claude Code skills and subagents that guide Data Mesh producers through migrating Parquet pipelines to Apache Iceberg on AWS, with multi-region resilience built in.
+Iceshelf is a set of Claude Code skills and subagents that guide Data Mesh producers through migrating Parquet pipelines to Apache Iceberg on AWS, with multi-region resilience built in.
 
 This is the **generic product guide**. It is tech-stack-agnostic — everything here applies whether you run PySpark on Glue, PySpark on EMR, PyIceberg on ECS, PyIceberg on Lambda, Java on ECS, or Java on Lambda. For copy-pasteable examples in your specific stack, go to a recipe under [`docs/examples/`](./examples/) after reading this guide.
 
 ---
 
-## 1. What DMIceberg gives you
+## 1. What Iceshelf gives you
 
 - **8 skills** (slash commands) that cover the full lifecycle of an Iceberg producer: profile setup, onboarding, table creation, data operations, migration from existing Parquet, maintenance, multi-region resilience, pipeline scaffolding, and metadata inspection.
 - **5 specialist subagents** that handle deeper analysis and code generation. Claude Code users get the orchestrated experience where agents coordinate with each other. GitHub Copilot users get the skills directly — Copilot auto-discovers `.claude/skills/` but does not dispatch subagents.

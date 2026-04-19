@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>DMIceberg v1.0.0 &mdash; Executive & Technical Overview</title>
-<meta name="description" content="DMIceberg: Apache Iceberg onboarding platform for AWS Data Mesh producers. Senior-leadership, architect, and developer briefing deck." />
+<title>Iceshelf v1.0.0 &mdash; Executive & Technical Overview</title>
+<meta name="description" content="Iceshelf: Apache Iceberg onboarding platform for AWS Data Mesh producers. Senior-leadership, architect, and developer briefing deck." />
 <style>
   :root {
     --bg-0: #05070f;
@@ -465,7 +465,7 @@
   <section class="slide" data-title="Title">
     <div class="slide-inner title-hero">
       <div class="eyebrow">Apache Iceberg &middot; AWS Data Mesh &middot; v1.0.0</div>
-      <h1 class="title">DMIceberg</h1>
+      <h1 class="title">Iceshelf</h1>
       <p class="kicker">
         From Parquet to production Iceberg &mdash; for six AWS producer stacks, with strict multi-region
         resilience for regulated environments where cross-region S3 and MRAPs are off the table.
@@ -535,7 +535,7 @@
       <div class="eyebrow">The Solution</div>
       <h2>One workflow package. Every producer gets the same validated path.</h2>
       <p class="lede mt-4" style="max-width: 1000px;">
-        DMIceberg is <em>not</em> a runtime library. It&rsquo;s a set of Claude Code skills and agents that produce
+        Iceshelf is <em>not</em> a runtime library. It&rsquo;s a set of Claude Code skills and agents that produce
         reviewable PySpark / PyIceberg / Java / Terraform artifacts your producers deploy themselves.
       </p>
 
@@ -629,7 +629,7 @@
       <div class="pill-row">
         <span class="pill all"><span class="pip"></span>All audiences</span>
       </div>
-      <div class="eyebrow">Who DMIceberg is for</div>
+      <div class="eyebrow">Who Iceshelf is for</div>
       <h2>Three audiences. One package.</h2>
 
       <div class="grid cols-3 mt-10">
@@ -704,7 +704,7 @@
             <li><b>Multi-Region Access Points</b> &mdash; intentionally disallowed</li>
             <li><b>Cross-region S3 reads at runtime</b> &mdash; intentionally disallowed</li>
             <li><b>Transactional cross-region writes</b> (eventual consistency only via CRR)</li>
-            <li><b>SaaS runtime</b> &mdash; DMIceberg is a workflow package, not a service</li>
+            <li><b>SaaS runtime</b> &mdash; Iceshelf is a workflow package, not a service</li>
           </ul>
         </div>
       </div>
@@ -728,7 +728,7 @@
       <div class="mt-8" style="display: grid; grid-template-columns: 1.1fr 1fr; gap: 28px; align-items: stretch;">
         <!-- Layered SVG -->
         <div class="card" style="padding: 18px;">
-          <svg viewBox="0 0 560 420" width="100%" height="auto" role="img" aria-label="DMIceberg architecture layers">
+          <svg viewBox="0 0 560 420" width="100%" height="auto" role="img" aria-label="Iceshelf architecture layers">
             <defs>
               <linearGradient id="g1" x1="0" x2="1" y1="0" y2="0">
                 <stop offset="0" stop-color="#22d3ee" stop-opacity="0.25"/>
@@ -781,7 +781,7 @@
               <rect x="20" y="336" width="520" height="70" rx="10" fill="url(#g4)" stroke="#fbbf24" stroke-opacity="0.45"/>
               <text x="36" y="362" font-size="11" fill="#fbbf24" letter-spacing="2">LAYER 4 &middot; YOUR AWS ACCOUNT</text>
               <text x="36" y="386" font-size="15" fill="#e6edf7" font-weight="700">Glue Data Catalog &middot; S3 &middot; IAM &middot; CloudWatch &middot; EventBridge</text>
-              <text x="36" y="400" font-size="12" fill="#9aa7bd">artifacts deployed by the producer&rsquo;s CI/CD &mdash; DMIceberg itself never touches prod</text>
+              <text x="36" y="400" font-size="12" fill="#9aa7bd">artifacts deployed by the producer&rsquo;s CI/CD &mdash; Iceshelf itself never touches prod</text>
             </g>
           </svg>
         </div>
@@ -802,7 +802,7 @@
           </div>
           <div class="card accent-amber accent-left">
             <h3>Layer 4 &mdash; your AWS</h3>
-            <p class="small mt-4">The platform deposits artifacts in your repo. Deployment is owned by the producer&rsquo;s CI/CD. DMIceberg has no runtime presence in production.</p>
+            <p class="small mt-4">The platform deposits artifacts in your repo. Deployment is owned by the producer&rsquo;s CI/CD. Iceshelf has no runtime presence in production.</p>
           </div>
         </div>
       </div>
@@ -1315,7 +1315,7 @@
       <div class="row space-between">
         <div>
           <div class="mono small text-faint">Repository</div>
-          <div style="font-size: 22px; font-weight: 700;" class="accent">github.com/&lt;org&gt;/DMIceberg</div>
+          <div style="font-size: 22px; font-weight: 700;" class="accent">github.com/&lt;org&gt;/Iceshelf</div>
         </div>
         <div style="text-align: right;">
           <div class="mono small text-faint">Release</div>

@@ -1,8 +1,8 @@
-# DMIceberg - Data Mesh Iceberg Migration Platform
+# Iceshelf — Apache Iceberg platform for AWS Data Mesh
 
 ## Project Purpose
 
-This project provides Claude Code skills and subagents to help Data Mesh producers migrate from Parquet table format to Apache Iceberg table format, with multi-region resilience capabilities.
+Iceshelf provides Claude Code skills and subagents to help Data Mesh producers migrate from Parquet table format to Apache Iceberg table format, with multi-region resilience capabilities.
 
 ## Architecture Context
 
@@ -109,11 +109,11 @@ catalog.initialize("glue_catalog", ImmutableMap.of(
 
 | Doc | Audience |
 |-----|----------|
-| `docs/using-dmiceberg.md` | Generic user guide — read first |
+| `docs/using-iceshelf.md` | Generic user guide — read first |
 | `docs/examples/pyspark-producer-recipe.md` | Glue/EMR PySpark producers |
 | `docs/examples/pyiceberg-producer-recipe.md` | ECS/Lambda Python producers |
 | `docs/examples/java-producer-recipe.md` | ECS/Lambda Java producers |
-| `docs/admin-guide.md` | Platform teams running DMIceberg for multiple producers |
+| `docs/admin-guide.md` | Platform teams running Iceshelf for multiple producers |
 
 ## Profiles
 
