@@ -159,6 +159,15 @@ locals {
   warehouse = "s3://${var.data_bucket}/warehouse/"
 }
 
+data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}
+
+locals {
+  glue_catalog_arn  = "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:catalog"
+  glue_database_arn = "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:database/${var.database}"
+  glue_table_arn    = "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/${var.database}/*"
+}
+
 resource "aws_iam_role" "glue" {
   name = "${var.producer_name}-iceberg-glue-role"
   assume_role_policy = jsonencode({
@@ -198,9 +207,11 @@ resource "aws_iam_role_policy" "iceberg_access" {
           "glue:GetDatabase", "glue:CreateDatabase",
           "glue:GetPartitions", "glue:BatchCreatePartition"
         ]
-        Resource = "*"
+        Resource = [local.glue_catalog_arn, local.glue_database_arn, local.glue_table_arn]
       },
       {
+        # Lake Formation GetDataAccess must be "*"; the action does not support
+        # resource-level scoping. Lake Formation enforces scope via its own grants.
         Effect = "Allow"
         Action = ["lakeformation:GetDataAccess"]
         Resource = "*"
@@ -571,18 +582,27 @@ OutputFile outputFile = table.io().newOutputFile(
     table.locationProvider().newDataLocation(UUID.randomUUID() + ".parquet")
 );
 
-// Same record construction as before, but write via Iceberg DataWriter
+// Same record construction as before, but write via Iceberg DataWriter.
+// toDataFile() MUST be called AFTER close() succeeds (not inside a bare
+// finally), and on failure we best-effort-delete the orphaned Parquet file.
 DataWriter<GenericRecord> writer = Parquet.writeData(outputFile)
     .schema(table.schema())
     .createWriterFunc(GenericParquetWriter::buildWriter)
     .overwrite()
     .build();
+DataFile dataFile;
 try {
     for (GenericRecord record : records) { writer.write(record); }
-} finally { writer.close(); }
+    writer.close();
+    dataFile = writer.toDataFile();
+} catch (Exception e) {
+    try { writer.close(); } catch (Exception ignored) {}
+    try { table.io().deleteFile(outputFile.location()); } catch (Exception ignored) {}
+    throw new RuntimeException("Iceberg write failed; orphan data file cleaned up", e);
+}
 
 // Iceberg handles the commit (replaces manual S3 upload)
-table.newAppend().appendFile(writer.toDataFile()).commit();
+table.newAppend().appendFile(dataFile).commit();
 ```
 
 Add Iceberg Maven dependencies: `iceberg-core`, `iceberg-data`, `iceberg-parquet`, `iceberg-aws` (version 1.10.1).
@@ -670,10 +690,20 @@ IcebergCommits.withRetry(() -> {
 ```hcl
 variable "producer_name" { type = string }
 variable "data_bucket"   { type = string }
+variable "database"      { type = string }
 variable "image_uri"     { type = string }  # ECR image containing your ingestion code
 variable "subnet_ids"    { type = list(string) }
 variable "security_group_ids" { type = list(string) }
 variable "kms_key_arn"   { type = string  default = null }
+
+data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}
+
+locals {
+  glue_catalog_arn  = "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:catalog"
+  glue_database_arn = "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:database/${var.database}"
+  glue_table_arn    = "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/${var.database}/*"
+}
 
 resource "aws_iam_role" "task" {
   name = "${var.producer_name}-iceberg-task-role"
@@ -700,7 +730,7 @@ resource "aws_iam_role_policy" "task" {
       {
         Effect = "Allow"
         Action = ["glue:GetTable","glue:GetTables","glue:UpdateTable","glue:CreateTable","glue:GetDatabase","glue:CreateDatabase"]
-        Resource = "*"
+        Resource = [local.glue_catalog_arn, local.glue_database_arn, local.glue_table_arn]
       }
     ],
     var.kms_key_arn == null ? [] : [{
@@ -740,8 +770,6 @@ resource "aws_ecs_task_definition" "ingest" {
   }])
 }
 
-data "aws_region" "current" {}
-
 resource "aws_scheduler_schedule" "ingest" {
   name       = "${var.producer_name}-iceberg-ingest"
   group_name = "default"
@@ -771,6 +799,15 @@ variable "database"      { type = string }
 variable "table_name"    { type = string }
 variable "code_zip_path" { type = string }  # local path to packaged zip
 variable "kms_key_arn"   { type = string  default = null }
+
+data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}
+
+locals {
+  glue_catalog_arn  = "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:catalog"
+  glue_database_arn = "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:database/${var.database}"
+  glue_table_arn    = "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/${var.database}/*"
+}
 
 resource "aws_iam_role" "lambda" {
   name = "${var.producer_name}-iceberg-lambda-role"
@@ -802,7 +839,7 @@ resource "aws_iam_role_policy" "lambda" {
       {
         Effect = "Allow"
         Action = ["glue:GetTable","glue:GetTables","glue:UpdateTable","glue:CreateTable","glue:GetDatabase","glue:CreateDatabase"]
-        Resource = "*"
+        Resource = [local.glue_catalog_arn, local.glue_database_arn, local.glue_table_arn]
       }
     ],
     var.kms_key_arn == null ? [] : [{
@@ -864,7 +901,7 @@ resource "aws_iam_role_policy" "maint" {
       {
         Effect = "Allow"
         Action = ["glue:GetTable","glue:GetTables","glue:UpdateTable","glue:GetDatabase"]
-        Resource = "*"
+        Resource = [local.glue_catalog_arn, local.glue_database_arn, local.glue_table_arn]
       }
     ],
     var.kms_key_arn == null ? [] : [{

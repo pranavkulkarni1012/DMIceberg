@@ -39,7 +39,8 @@ This project provides Claude Code skills and subagents to help Data Mesh produce
 
 | Skill | Purpose |
 |-------|---------|
-| `/iceberg-onboard` | **Primary entry point.** End-to-end onboarding for new or existing producers |
+| `/iceberg-profile-setup` | **Run first.** Captures producer conventions into `profiles/<producer-name>.yaml` |
+| `/iceberg-onboard` | End-to-end onboarding assessment for new or existing producers |
 | `/iceberg-ddl` | Create, alter, drop Iceberg tables with schema evolution |
 | `/iceberg-data` | Insert, upsert, delete data in Iceberg tables |
 | `/iceberg-maintenance` | Compaction, snapshot expiry, orphan cleanup |
@@ -70,17 +71,24 @@ spark.conf.set("spark.sql.catalog.glue_catalog.io-impl", "org.apache.iceberg.aws
 ```
 
 ### PyIceberg Catalog (ECS/Lambda Python)
+Both `glue.region` and `s3.region` are required; do not use the non-canonical `region_name`.
 ```python
 from pyiceberg.catalog.glue import GlueCatalog
-catalog = GlueCatalog("glue_catalog", **{"warehouse": "s3://<bucket>/warehouse/"})
+catalog = GlueCatalog("glue_catalog", **{
+    "warehouse": "s3://<bucket>/warehouse/",
+    "glue.region": "<region>",
+    "s3.region":   "<region>",
+})
 ```
 
 ### Java Catalog (ECS/Lambda Java)
 ```java
 GlueCatalog catalog = new GlueCatalog();
 catalog.initialize("glue_catalog", ImmutableMap.of(
-    "warehouse", "s3://<bucket>/warehouse/",
-    "io-impl", "org.apache.iceberg.aws.s3.S3FileIO"
+    "warehouse",   "s3://<bucket>/warehouse/",
+    "io-impl",     "org.apache.iceberg.aws.s3.S3FileIO",
+    "glue.region", "<region>",
+    "s3.region",   "<region>"
 ));
 ```
 
@@ -93,6 +101,20 @@ catalog.initialize("glue_catalog", ImmutableMap.of(
 1. Source region writes Iceberg data + metadata to source S3 bucket
 2. S3 CRR replicates all objects to target region bucket
 3. Repointing utility reads replicated metadata.json, rewrites all S3 paths from source to target bucket
-4. Manifest-list and manifest Avro files are rewritten with updated paths
+4. Manifest-list and manifest Avro files are rewritten with updated paths (Avro file-level metadata — `iceberg.schema`, `content`, `partition-spec-id`, etc. — must be preserved)
 5. Repointed metadata is written to target bucket
 6. Table is registered in target region's Glue Catalog pointing to repointed metadata
+
+## Documentation
+
+| Doc | Audience |
+|-----|----------|
+| `docs/using-dmiceberg.md` | Generic user guide — read first |
+| `docs/examples/pyspark-producer-recipe.md` | Glue/EMR PySpark producers |
+| `docs/examples/pyiceberg-producer-recipe.md` | ECS/Lambda Python producers |
+| `docs/examples/java-producer-recipe.md` | ECS/Lambda Java producers |
+| `docs/admin-guide.md` | Platform teams running DMIceberg for multiple producers |
+
+## Profiles
+
+Producers capture their conventions in `profiles/<producer-name>.yaml`. Presets in `profiles/presets/`. Schema reference: `profiles/schema.md`. Every skill reads from the producer's profile.
