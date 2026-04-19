@@ -199,12 +199,12 @@ Include Maven/Gradle dependencies:
 <dependency>
     <groupId>org.apache.iceberg</groupId>
     <artifactId>iceberg-core</artifactId>
-    <version>1.7.1</version>
+    <version>1.10.1</version>
 </dependency>
 <dependency>
     <groupId>org.apache.iceberg</groupId>
     <artifactId>iceberg-aws</artifactId>
-    <version>1.7.1</version>
+    <version>1.10.1</version>
 </dependency>
 ```
 

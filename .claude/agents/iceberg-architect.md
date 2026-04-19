@@ -61,7 +61,9 @@ Evaluate and document:
    - **Athena v2**: Iceberg v1 only, no delete file support
    - **Redshift Spectrum**: Iceberg v2 read support (check latest feature availability)
    - **EMR 6.5+/7.x**: Full Iceberg support via Spark runtime
-   - **Glue 4.0**: Full Iceberg support via `--datalake-formats`
+   - **Glue 5.1 (GA Nov 2025)**: Spark 3.5.6 + Iceberg 1.10.0; full v2 (equality/position deletes, MoR) support, adds Iceberg materialized-view and format-v3. Enable via `--datalake-formats iceberg` + `spark.sql.catalog.*` configs.
+   - **Glue 5.0 (GA Dec 2024)**: Spark 3.5.4 + Iceberg 1.6.1 at launch, subsequently updated to 1.7.1; same enablement pattern as 5.1.
+   - **Glue 4.0**: Iceberg via `--datalake-formats`; still supported but on older Spark 3.3 runtime -- recommend upgrade for new producers.
    - **Presto/Trino**: Iceberg v2 support varies by version (check connector version)
    - If any consumer uses an engine that doesn't support format-version 2, recommend staying on v1 or upgrading the consumer first
 5. **Performance risk**: Will Iceberg add latency? File size concerns?

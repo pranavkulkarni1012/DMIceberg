@@ -177,10 +177,17 @@ orphan_ts = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
 # 1. Expire snapshots
 spark.sql(f"CALL glue_catalog.system.expire_snapshots(table => '{fqtn}', older_than => TIMESTAMP '{expire_ts}', retain_last => 3)")
 
-# 2. (MoR tables only) Compact position delete files
-#    Skip this call entirely for copy-on-write tables.
-write_mode = spark.sql(f"SHOW TBLPROPERTIES glue_catalog.{fqtn} ('write.delete.mode')").collect()
-if write_mode and write_mode[0]['value'] == 'merge-on-read':
+# 2. (MoR tables only) Compact position delete files.
+#    Probing format-version via snapshot summaries or SHOW TBLPROPERTIES is unreliable --
+#    format-version is a metadata-json field, not a snapshot summary entry, and it's
+#    only exposed as a tbl property when explicitly set. Instead, query the .files
+#    metadata table directly: v1 tables cannot have delete files by spec (content=0 only),
+#    so a positive count for content IN (1, 2) is sufficient and sound evidence that
+#    rewrite_position_delete_files is worth running.
+del_rows = spark.sql(f"""
+    SELECT COUNT(*) AS n FROM glue_catalog.{fqtn}.files WHERE content IN (1, 2)
+""").collect()
+if del_rows and del_rows[0]['n'] > 0:
     spark.sql(f"CALL glue_catalog.system.rewrite_position_delete_files(table => '{fqtn}', options => map('partial-progress.enabled','true'))")
 
 # 3. Compact data files
@@ -259,9 +266,11 @@ Table table = catalog.loadTable(TableIdentifier.of("{database}", "{table}"));
 
 // === 1. EXPIRE SNAPSHOTS ===
 // Prefer the Actions API when Spark is available -- it both expires snapshots and
-// asynchronously deletes the unreferenced data/manifest/metadata files in parallel,
-// so you don't need to issue separate DeleteOrphanFiles afterwards for files
-// that were referenced only by the expired snapshots.
+// deletes the files (data / manifests / manifest-lists) that were referenced
+// ONLY by those expired snapshots, in parallel. NOTE: this does NOT remove true
+// orphans -- files on S3 that no live or expired metadata ever referenced, e.g.,
+// partial writes from a failed commit. Run DeleteOrphanFiles separately for those
+// (step 5 below).
 long expireTimestamp = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(7);
 SparkActions.get()
     .expireSnapshots(table)

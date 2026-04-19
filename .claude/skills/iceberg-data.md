@@ -135,6 +135,7 @@ For Glue jobs, always include:
 ```python
 from pyiceberg.catalog.glue import GlueCatalog
 import pyarrow as pa
+from datetime import datetime
 
 catalog = GlueCatalog("glue_catalog", **{
     "warehouse": "s3://{bucket}/warehouse/",
@@ -242,22 +243,22 @@ Maven dependencies:
 <dependency>
     <groupId>org.apache.iceberg</groupId>
     <artifactId>iceberg-core</artifactId>
-    <version>1.7.1</version>
+    <version>1.10.1</version>
 </dependency>
 <dependency>
     <groupId>org.apache.iceberg</groupId>
     <artifactId>iceberg-data</artifactId>
-    <version>1.7.1</version>
+    <version>1.10.1</version>
 </dependency>
 <dependency>
     <groupId>org.apache.iceberg</groupId>
     <artifactId>iceberg-parquet</artifactId>
-    <version>1.7.1</version>
+    <version>1.10.1</version>
 </dependency>
 <dependency>
     <groupId>org.apache.iceberg</groupId>
     <artifactId>iceberg-aws</artifactId>
-    <version>1.7.1</version>
+    <version>1.10.1</version>
 </dependency>
 ```
 
