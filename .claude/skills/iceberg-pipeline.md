@@ -143,7 +143,8 @@ job.commit()
 **4. Glue Job Configuration (Terraform)**:
 
 Notes on Glue + Iceberg configuration:
-- `--datalake-formats = iceberg` is the ONLY job parameter required to enable Iceberg on Glue 4.0. Do NOT also pass the Spark catalog configs as `--conf` here -- they will conflict with Glue's auto-registered Iceberg catalog. Set the `spark.sql.catalog.glue_catalog.*` configs in the **job script** via `SparkSession.builder` (shown above) to pick your own catalog name (`glue_catalog`) and the `S3FileIO` `io-impl`. This single source of truth avoids the CFN `>-` folded-scalar `--conf` trap.
+- `--datalake-formats = iceberg` installs the Iceberg runtime JARs onto the Glue worker; it does NOT auto-register a Spark catalog. You still need the `spark.sql.catalog.glue_catalog.*` configs. The canonical pattern ([AWS Glue Iceberg docs](https://docs.aws.amazon.com/glue/latest/dg/aws-glue-programming-etl-format-iceberg.html)) is: pass `--datalake-formats iceberg` as a job parameter AND set the `spark.sql.catalog.glue_catalog.*` keys -- either through `--conf` job parameters or in the job script via `SparkSession.builder` (shown above). Pick one place to set them so you have a single source of truth; the two forms are equivalent, not conflicting.
+- Target **Glue 5.x** for new producers. Glue 5.0 (GA Dec 2024) launched with Iceberg 1.6.1 and was subsequently updated to 1.7.1 on Spark 3.5.4 / Python 3.11. Glue 5.1 (GA Nov 2025) ships Iceberg 1.10.0 on Spark 3.5.6 and adds Iceberg materialized-view + format-v3 support. Glue 4.0 still runs but is on the older Spark 3.3 runtime.
 - If your buckets are encrypted with a customer-managed KMS key, grant the Glue role `kms:Decrypt` + `kms:GenerateDataKey` + `kms:Encrypt` on that key (see KMS block below).
 
 ```hcl
@@ -216,7 +217,7 @@ resource "aws_iam_role_policy" "iceberg_access" {
 resource "aws_glue_job" "ingestion" {
   name     = "${var.producer_name}-iceberg-ingestion"
   role_arn = aws_iam_role.glue.arn
-  glue_version      = "4.0"
+  glue_version      = "5.0"  # Glue 5.x ships Spark 3.5.4 + Iceberg; 5.1 bundles Iceberg 1.10.0.
   number_of_workers = 10
   worker_type       = "G.1X"
 
@@ -238,7 +239,7 @@ resource "aws_glue_job" "ingestion" {
 resource "aws_glue_job" "maintenance" {
   name     = "${var.producer_name}-iceberg-maintenance"
   role_arn = aws_iam_role.glue.arn
-  glue_version      = "4.0"
+  glue_version      = "5.0"  # Glue 5.x ships Spark 3.5.4 + Iceberg; 5.1 bundles Iceberg 1.10.0.
   number_of_workers = 5
   worker_type       = "G.1X"
 
@@ -378,9 +379,15 @@ public class IcebergPipelineHandler {
 
     public IcebergPipelineHandler(String warehouse, String region) {
         this.catalog = new GlueCatalog();
+        // glue.region + s3.region must be set explicitly. Otherwise the AWS SDK
+        // resolves region from env/IMDS/profile, which in a Lambda deployed in a
+        // different region than the warehouse silently triggers cross-region S3
+        // access -- explicitly disallowed on this platform.
         this.catalog.initialize("glue_catalog", ImmutableMap.of(
-            "warehouse", warehouse,
-            "io-impl", "org.apache.iceberg.aws.s3.S3FileIO"
+            "warehouse",   warehouse,
+            "glue.region", region,
+            "s3.region",   region,
+            "io-impl",     "org.apache.iceberg.aws.s3.S3FileIO"
         ));
     }
 
@@ -394,22 +401,27 @@ public class IcebergPipelineHandler {
         );
         OutputFile outputFile = table.io().newOutputFile(dataFilePath);
 
+        // toDataFile() reads the finalized footer and must be called AFTER close().
+        // Close explicitly (not in finally) so a flush failure surfaces before commit.
+        // On any exception before commit, delete the orphan Parquet file so failed
+        // runs don't leak S3 objects that no Iceberg snapshot references.
         DataWriter<GenericRecord> writer = Parquet.writeData(outputFile)
             .schema(schema)
             .createWriterFunc(GenericParquetWriter::buildWriter)
             .overwrite()
             .build();
-
+        DataFile dataFile;
         try {
             for (GenericRecord record : records) {
                 writer.write(record);
             }
-        } finally {
             writer.close();
+            dataFile = writer.toDataFile();
+        } catch (Exception e) {
+            try { writer.close(); } catch (Exception ignored) {}
+            try { table.io().deleteFile(dataFilePath); } catch (Exception ignored) {}
+            throw e;
         }
-
-        // Commit
-        DataFile dataFile = writer.toDataFile();
         table.newAppend().appendFile(dataFile).commit();
     }
 }
@@ -421,22 +433,22 @@ public class IcebergPipelineHandler {
     <dependency>
         <groupId>org.apache.iceberg</groupId>
         <artifactId>iceberg-core</artifactId>
-        <version>1.7.1</version>
+        <version>1.10.1</version>
     </dependency>
     <dependency>
         <groupId>org.apache.iceberg</groupId>
         <artifactId>iceberg-aws</artifactId>
-        <version>1.7.1</version>
+        <version>1.10.1</version>
     </dependency>
     <dependency>
         <groupId>org.apache.iceberg</groupId>
         <artifactId>iceberg-data</artifactId>
-        <version>1.7.1</version>
+        <version>1.10.1</version>
     </dependency>
     <dependency>
         <groupId>org.apache.iceberg</groupId>
         <artifactId>iceberg-parquet</artifactId>
-        <version>1.7.1</version>
+        <version>1.10.1</version>
     </dependency>
     <dependency>
         <groupId>software.amazon.awssdk</groupId>
@@ -573,7 +585,7 @@ try {
 table.newAppend().appendFile(writer.toDataFile()).commit();
 ```
 
-Add Iceberg Maven dependencies: `iceberg-core`, `iceberg-data`, `iceberg-parquet`, `iceberg-aws` (version 1.7.1).
+Add Iceberg Maven dependencies: `iceberg-core`, `iceberg-data`, `iceberg-parquet`, `iceberg-aws` (version 1.10.1).
 
 ### 3G: Cross-cutting patterns
 
@@ -613,25 +625,46 @@ IcebergCommits.withRetry(() -> {
 });
 ```
 
-**Writing to PARTITIONED tables (Java)** -- the `DataFiles.builder()` path shown earlier works for *unpartitioned* tables. For partitioned tables, you must supply partition data so Iceberg can place the file into the correct partition tuple:
+**Writing to PARTITIONED tables (Java)** -- two distinct paths, and it matters which one you pick:
 
-```java
-import org.apache.iceberg.PartitionKey;
-import org.apache.iceberg.data.GenericRecord;
+1. **Writer-produced files (normal ingestion)** -- when you construct a `DataWriter` for a partitioned table, pass the `PartitionKey` to the writer builder. `writer.toDataFile()` then carries the partition tuple automatically; you do NOT use `DataFiles.builder().withPartition(...)`:
 
-// Compute the partition key from a sample record (or a representative value).
-PartitionKey pk = new PartitionKey(table.spec(), table.schema());
-pk.partition(sampleRecord);  // projects partition columns through the table's transforms
+    ```java
+    import org.apache.iceberg.PartitionKey;
+    import org.apache.iceberg.data.GenericRecord;
 
-DataFile dataFile = DataFiles.builder(table.spec())
-    .withPath(dataFilePath)
-    .withFileSizeInBytes(outputFile.toInputFile().getLength())
-    .withRecordCount(recordCount)
-    .withFormat(FileFormat.PARQUET)
-    .withPartition(pk)                // <-- REQUIRED for partitioned tables
-    // .withMetrics(metrics)          // supply column-level metrics for predicate pushdown
-    .build();
-```
+    // Compute the partition key from a representative record in this batch.
+    PartitionKey pk = new PartitionKey(table.spec(), table.schema());
+    pk.partition(sampleRecord);  // projects partition columns through the table's transforms
+
+    DataWriter<GenericRecord> writer = Parquet.writeData(outputFile)
+        .schema(table.schema())
+        .createWriterFunc(GenericParquetWriter::buildWriter)
+        .withSpec(table.spec())           // REQUIRED for partitioned tables
+        .withPartition(pk)                // REQUIRED: the writer records this on the DataFile
+        .overwrite()
+        .build();
+
+    try { for (GenericRecord r : records) writer.write(r); } finally { writer.close(); }
+
+    DataFile dataFile = writer.toDataFile();   // partition is already attached
+    table.newAppend().appendFile(dataFile).commit();
+    ```
+
+    If a batch spans multiple partitions, partition the records in-memory first and open one writer per partition. The `PartitionedFanoutWriter` / `ClusteredDataWriter` helpers in `iceberg-data` automate this.
+
+2. **Registering a pre-existing Parquet file (add-files / migration)** -- when you do NOT own the writer and only have a file path + statistics, use `DataFiles.builder()` and supply the partition yourself:
+
+    ```java
+    DataFile dataFile = DataFiles.builder(table.spec())
+        .withPath(existingParquetPath)
+        .withFileSizeInBytes(fileSize)
+        .withRecordCount(recordCount)
+        .withFormat(FileFormat.PARQUET)
+        .withPartition(pk)                // REQUIRED when registering a raw file
+        // .withMetrics(metrics)          // column-level stats for predicate pushdown
+        .build();
+    ```
 
 **ECS (Fargate) deployment skeleton (Terraform)**:
 ```hcl

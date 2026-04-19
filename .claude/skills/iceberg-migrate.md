@@ -271,6 +271,19 @@ catalog = GlueCatalog("glue_catalog", **{
 parquet_schema = pq.read_schema("s3://{source_bucket}/{source_path}/part-00000.parquet")
 print(f"Source Parquet schema:\n{parquet_schema}")
 
+# GOTCHA: nanosecond-precision timestamps (pa.timestamp('ns')) are format-v3 only;
+# create_table below will raise on v2 tables. Downcast to microseconds before create:
+import pyarrow as pa
+def _downcast_ns_to_us(schema: pa.Schema) -> pa.Schema:
+    fields = []
+    for f in schema:
+        if pa.types.is_timestamp(f.type) and f.type.unit == 'ns':
+            fields.append(pa.field(f.name, pa.timestamp('us', tz=f.type.tz), f.nullable))
+        else:
+            fields.append(f)
+    return pa.schema(fields)
+parquet_schema = _downcast_ns_to_us(parquet_schema)
+
 # Step 2: Create Iceberg table with matching schema
 # PyIceberg can create from PyArrow schema
 table = catalog.create_table(
@@ -278,6 +291,17 @@ table = catalog.create_table(
     schema=parquet_schema,  # PyIceberg accepts PyArrow schemas
     properties={"format-version": "2"}
 )
+
+# Register a name mapping so existing Parquet files (which lack Iceberg field IDs
+# in their metadata) can be resolved by column name during add_files / scans.
+# Without this, reads of any pre-existing Parquet file that you later register via
+# add_files will return nulls for columns whose Parquet-assigned ids don't match
+# the Iceberg field ids just assigned by create_table.
+import json
+from pyiceberg.schema import Schema
+name_mapping = table.schema().name_mapping
+with table.update_properties() as props:
+    props.set("schema.name-mapping.default", json.dumps(name_mapping.model_dump()))
 
 # Step 3: Read source Parquet and append to Iceberg
 # For smaller datasets (fits in memory):

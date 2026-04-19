@@ -248,9 +248,31 @@ def register_iceberg_table_in_target_catalog(
         # Table is already registered -- advance its metadata pointer to the new repointed location.
         # PyIceberg does not yet expose a pure "move pointer" API on GlueCatalog, so drop + re-register.
         # drop_table(purge=False) keeps the underlying S3 objects intact; only the catalog entry is removed.
+        #
+        # KNOWN RISK (not atomic):
+        #   1. Between drop_table and register_table the catalog entry is absent, so concurrent
+        #      readers in the target region see TableNotFound for a short window.
+        #   2. If register_table fails (transient Glue 5xx, IAM flap), the catalog is left EMPTY
+        #      and the next sync run will take the "fresh register" path -- the originally
+        #      registered (older) metadata_location is forgotten.
+        #
+        # Mitigations:
+        #   (a) Capture the previous metadata_location FIRST so we can roll back on failure.
+        #   (b) Keep the drop+register window short; do not interleave other slow work.
+        #   (c) Production deployments should prefer the Glue UpdateTable API (matches what
+        #       Iceberg's own GlueTableOperations.doCommit does) to swap only the
+        #       metadata_location parameter atomically. That path is not shown here because
+        #       it requires hand-crafting the Glue TableInput, which is a stable concern
+        #       best delegated to a small helper -- see docs/glue_update_table_helper.md.
+        previous = catalog.load_table(identifier).metadata_location
         catalog.drop_table(identifier, purge=False)
-        catalog.register_table(identifier, repointed_metadata_location)
-        print(f"Re-registered {database}.{table_name} in {target_region} at new metadata location")
+        try:
+            catalog.register_table(identifier, repointed_metadata_location)
+            print(f"Re-registered {database}.{table_name} in {target_region} at new metadata location")
+        except Exception:
+            # Roll forward to the previous metadata so the target catalog is never left empty.
+            catalog.register_table(identifier, previous)
+            raise
 ```
 
 **Java equivalent** (uses the Iceberg `GlueCatalog` Java API, not the AWS SDK `GlueClient` directly):
@@ -397,8 +419,27 @@ class IcebergMetadataRepointer:
         # Parse Avro
         reader = fastavro.reader(io.BytesIO(avro_bytes))
         schema = reader.writer_schema
-        # Preserve original codec; fastavro exposes it via reader.codec
-        codec = getattr(reader, 'codec', 'deflate') or 'deflate'
+        # Preserve original codec. fastavro stores the Avro-spec file metadata on
+        # reader.metadata -- 'avro.codec' is bytes (e.g., b'deflate'). fastavro does
+        # NOT expose a `.codec` attribute; relying on getattr would silently default
+        # and corrupt the output's compression. Falling back to 'null' matches the
+        # Avro spec (no codec entry means uncompressed); Iceberg writes manifests
+        # with 'deflate' by default, so absence is only expected for hand-written files.
+        codec_meta = reader.metadata.get('avro.codec', b'null')
+        codec = codec_meta.decode('utf-8') if isinstance(codec_meta, (bytes, bytearray)) else str(codec_meta)
+        if not codec:
+            codec = 'null'
+        # Preserve Iceberg's file-level Avro metadata (e.g., 'iceberg.schema',
+        # 'format-version', 'content', 'partition-spec'). fastavro writes ONLY the
+        # schema + codec by default; losing these headers causes Iceberg readers to
+        # reject the manifest or misinterpret partition data. Pass non-reserved keys
+        # through; fastavro manages 'avro.schema' and 'avro.codec' itself.
+        _reserved = {'avro.schema', 'avro.codec'}
+        extra_metadata = {}
+        for k, v in reader.metadata.items():
+            if k in _reserved:
+                continue
+            extra_metadata[k] = v.decode('utf-8') if isinstance(v, (bytes, bytearray)) else v
         records = list(reader)
 
         # Replace paths in all string fields recursively
@@ -406,9 +447,9 @@ class IcebergMetadataRepointer:
         for record in records:
             repointed_records.append(self._repoint_record(record))
 
-        # Write repointed Avro with the original codec
+        # Write repointed Avro with the original codec and preserved headers.
         output = io.BytesIO()
-        fastavro.writer(output, schema, repointed_records, codec=codec)
+        fastavro.writer(output, schema, repointed_records, codec=codec, metadata=extra_metadata)
         output.seek(0)
 
         repointed_key = avro_key.replace('.avro', '.repointed.avro')
@@ -725,11 +766,19 @@ public class IcebergMetadataRepointer {
                     .map(this::repointAvroRecord)
                     .collect(Collectors.toList());
 
-                // Write repointed Avro with the original codec.
+                // Write repointed Avro with the original codec and preserved file-level
+                // metadata (e.g., 'iceberg.schema', 'format-version', 'content'). DataFileWriter
+                // does NOT copy reader metadata into the output; without this, Iceberg readers
+                // reject the manifest or misinterpret partition data. Reserved avro.* keys are
+                // managed by Avro itself and must not be set via setMeta.
                 ByteArrayOutputStream output = new ByteArrayOutputStream();
                 GenericDatumWriter<GenericRecord> writer = new GenericDatumWriter<>(avroSchema);
                 DataFileWriter<GenericRecord> dataWriter = new DataFileWriter<>(writer);
                 dataWriter.setCodec(org.apache.avro.file.CodecFactory.fromString(codecName));
+                for (String metaKey : dataReader.getMetaKeys()) {
+                    if (metaKey.startsWith("avro.")) continue;
+                    dataWriter.setMeta(metaKey, dataReader.getMeta(metaKey));
+                }
                 dataWriter.create(avroSchema, output);
                 for (GenericRecord rec : repointed) {
                     dataWriter.append(rec);
@@ -770,10 +819,11 @@ public class IcebergMetadataRepointer {
         // correct Glue TableInput (ICEBERG parameters, schema columns, partition spec).
         // This avoids hand-crafting StorageDescriptor.Columns = [] which is not a stable contract.
         org.apache.iceberg.aws.glue.GlueCatalog icebergCatalog = new org.apache.iceberg.aws.glue.GlueCatalog();
+        String region = glue.serviceClientConfiguration().region().id();
         icebergCatalog.initialize("target", Map.of(
             "warehouse",   "s3://" + bucket + "/" + warehousePrefix + "/",
-            "glue.region", Region.of(glue.serviceClientConfiguration().region().id()).id(),
-            "s3.region",   Region.of(glue.serviceClientConfiguration().region().id()).id(),
+            "glue.region", region,
+            "s3.region",   region,
             "io-impl",     "org.apache.iceberg.aws.s3.S3FileIO"
         ));
 

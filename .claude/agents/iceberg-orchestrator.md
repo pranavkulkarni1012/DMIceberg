@@ -2,7 +2,7 @@
 name: iceberg-orchestrator
 description: "End-to-end orchestration agent for Iceberg onboarding. Coordinates the full journey from assessment through code generation, validation, and multi-region setup. Use when a producer (new or existing) needs a complete Iceberg onboarding, not just a single operation."
 model: opus
-tools: Read, Glob, Grep, Bash, Write, Edit, TodoWrite, Task, WebFetch, WebSearch
+tools: Read, Glob, Grep, Bash, Write, Edit, TodoWrite, Agent(iceberg-architect, iceberg-code-generator, iceberg-validator, iceberg-multi-region-planner), WebFetch, WebSearch
 ---
 
 # Iceberg Onboarding Orchestrator

@@ -50,7 +50,7 @@ Verify:
 - Both `glue.region` AND `s3.region` are set (canonical PyIceberg 0.7+ keys — `glue.region` selects the Glue catalog endpoint, `s3.region` selects the S3FileIO endpoint). Setting only one causes signing/region-mismatch errors at IO time.
 - Correct catalog type (GlueCatalog)
 
-**MEDIUM severity finding — flag if present:** `region_name` as a config key. This is a legacy/incorrect key that PyIceberg silently ignores, causing the catalog to fall back to AWS SDK default region resolution (env / IMDS / profile). In Lambda this often resolves to the wrong region and fails with cross-region S3 access, which is explicitly disallowed on this platform. Replace with the canonical pair above.
+**HIGH severity finding — flag if present:** `region_name` as a PyIceberg GlueCatalog config key. It is NOT a documented PyIceberg / GlueCatalog property. In PyIceberg 0.7 it was sometimes passed through to the underlying boto3 session as a side effect; 0.8+ tightened the passthrough so it no longer reliably reaches any client. When ignored, the catalog falls back to AWS SDK default region resolution (env / IMDS / profile). In Lambda this often resolves to the wrong region and triggers cross-region S3 access, which is explicitly disallowed on this platform. Replace with the canonical `glue.region` + `s3.region` pair above. (Note: `region_name` is legitimately a boto3 client kwarg — flag only when it appears as a PyIceberg catalog config key, not inside `boto3.client(..., region_name=...)`.)
 
 #### Java Configuration
 Verify:

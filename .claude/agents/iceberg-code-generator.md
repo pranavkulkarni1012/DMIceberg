@@ -2,7 +2,7 @@
 name: iceberg-code-generator
 description: "Generate production-ready Iceberg code for a specific tech stack. Use when you need complete, working code for Iceberg operations (DDL, data ingestion, maintenance, multi-region) in PySpark, PyIceberg, or Java."
 model: sonnet
-tools: Read, Glob, Grep, Write, Edit, WebFetch, WebSearch, Bash
+tools: Read, Glob, Grep, Write, Edit, WebFetch, WebSearch
 ---
 
 # Iceberg Code Generator
@@ -161,19 +161,23 @@ fastavro>=1.9.0  # only for multi-region metadata repointing
 
 ### Java (Maven)
 ```xml
-<!-- Iceberg 1.7.x -->
-<iceberg.version>1.7.1</iceberg.version>
+<!-- Iceberg 1.10.x is current as of early 2026. -->
+<iceberg.version>1.10.1</iceberg.version>
 <!-- AWS SDK v2 -->
 <aws.sdk.version>2.25.0</aws.sdk.version>
 ```
 
 ### Spark
 ```
-# Glue 4.0 ships with Iceberg support via --datalake-formats
-# EMR 6.x/7.x: use iceberg-spark-runtime matching your Spark version
-iceberg-spark-runtime-3.3_2.12:1.7.1  # for Spark 3.3
-iceberg-spark-runtime-3.4_2.12:1.7.1  # for Spark 3.4
-iceberg-spark-runtime-3.5_2.13:1.7.1  # for Spark 3.5
+# Glue 5.0 (GA Dec 2024) runs Spark 3.5.4 + Python 3.11; launched with Iceberg 1.6.1,
+# subsequently updated to Iceberg 1.7.1 (confirm current bundled version against AWS docs).
+# Glue 5.1 (GA Nov 2025) runs Spark 3.5.6 + Iceberg 1.10.0 -- prefer this for new producers.
+# Both are enabled via --datalake-formats iceberg AND explicit spark.sql.catalog.* configs.
+# For EMR 6.x/7.x, pick iceberg-spark-runtime matching (Spark version, Scala version):
+iceberg-spark-runtime-3.3_2.12:1.10.1  # Spark 3.3 / Scala 2.12
+iceberg-spark-runtime-3.4_2.12:1.10.1  # Spark 3.4 / Scala 2.12
+iceberg-spark-runtime-3.5_2.12:1.10.1  # Spark 3.5 / Scala 2.12  (Glue 5.x default)
+iceberg-spark-runtime-3.5_2.13:1.10.1  # Spark 3.5 / Scala 2.13  (EMR 7.x custom builds)
 ```
 
 ## Important Guidelines
