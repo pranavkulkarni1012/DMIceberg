@@ -455,7 +455,7 @@
 <div class="progress" id="progress"></div>
 
 <div class="topbar">
-  <div class="brand"><span class="dot"></span>DMICEBERG &middot; v1.0.0</div>
+  <div class="brand"><span class="dot"></span>ICESHELF &middot; v1.0.0</div>
   <div class="counter"><b id="sc-cur">01</b> / <span id="sc-tot">16</span><span class="t-title" id="sc-title">Title</span></div>
 </div>
 
@@ -464,20 +464,20 @@
   <!-- ===================== 1. TITLE ===================== -->
   <section class="slide" data-title="Title">
     <div class="slide-inner title-hero">
-      <div class="eyebrow">Apache Iceberg &middot; AWS Data Mesh &middot; v1.0.0</div>
+      <div class="eyebrow">Apache Iceberg &middot; AWS Data Mesh &middot; Enterprise briefing</div>
       <h1 class="title">Iceshelf</h1>
       <p class="kicker">
-        From Parquet to production Iceberg &mdash; for six AWS producer stacks, with strict multi-region
-        resilience for regulated environments where cross-region S3 and MRAPs are off the table.
+        A governed, compliance-ready path from Parquet to Apache Iceberg across every producer in your
+        Data Mesh &mdash; in days, not quarters, without cross-region S3 or Multi-Region Access Points.
       </p>
       <div class="badge-row">
-        <span class="badge">9 slash-command skills</span>
-        <span class="badge violet">5 specialized subagents</span>
-        <span class="badge emerald">6 tech stacks</span>
-        <span class="badge faint">Claude Code plugin &middot; Apache-2.0</span>
+        <span class="badge">~80% faster producer onboarding</span>
+        <span class="badge violet">Strict multi-region isolation</span>
+        <span class="badge emerald">6 AWS stacks, one quality bar</span>
+        <span class="badge faint">Apache-2.0 &middot; no SaaS dependency</span>
       </div>
       <div class="row mt-8 text-faint small">
-        <span>Briefing for senior leadership, data platform architects, and producer engineers.</span>
+        <span>Prepared for senior leadership and data platform architecture. Use cursor keys or swipe to advance.</span>
       </div>
     </div>
   </section>
@@ -521,6 +521,55 @@
         </div>
         <div class="text-faint small" style="max-width: 520px; text-align: right;">
           Multiply by N producers, compound by the risk of silent cross-region S3 calls in regulated audits, and the total bill is a multi-quarter program.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 2b. WHY NOW ===================== -->
+  <section class="slide" data-title="Why now">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill mgmt"><span class="pip"></span>Leadership</span>
+        <span class="pill arch"><span class="pip"></span>Architect</span>
+      </div>
+      <div class="eyebrow">Market timing</div>
+      <h2>Iceberg has crossed the chasm. The cost of waiting compounds monthly.</h2>
+      <p class="lede mt-4" style="max-width: 1000px;">
+        The open-table-format debate is over. Apache Iceberg is now first-class on every major cloud and warehouse.
+        The decision in front of you is no longer <em>whether</em>, but <em>how quickly and how safely</em>.
+      </p>
+
+      <div class="grid cols-4 mt-8">
+        <div class="card accent-cyan accent-left">
+          <h3 class="accent">AWS native</h3>
+          <p class="small mt-4">Glue 5.1 ships Iceberg 1.10 in-runtime. Athena, EMR, Redshift, and Lake Formation all treat Iceberg as a first-class table type.</p>
+        </div>
+        <div class="card accent-violet accent-left">
+          <h3 class="accent-violet">Warehouse convergence</h3>
+          <p class="small mt-4">Snowflake (Polaris/Open Catalog), Databricks (acquired Tabular), Google BigQuery, and Azure Fabric all read Iceberg today. Vendor lock-in via proprietary formats is no longer required.</p>
+        </div>
+        <div class="card accent-emerald accent-left">
+          <h3 class="accent-emerald">Proven at scale</h3>
+          <p class="small mt-4">Netflix (origin), Apple, LinkedIn, Salesforce (50&nbsp;PB, 4M tables), Stripe, Airbnb. This is not early-adopter risk; it is the industry standard for new lakehouse builds.</p>
+        </div>
+        <div class="card accent-left" style="border-color: rgba(251,191,36,0.3);">
+          <h3 style="color: var(--amber);">Regulatory pressure</h3>
+          <p class="small mt-4">Data sovereignty rules (EU, APAC, US sectoral) and DR audit expectations push every regulated org toward strict per-region isolation &mdash; the exact posture Iceshelf assumes.</p>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="row space-between">
+        <div>
+          <div class="mono small text-faint">Cost of waiting one more quarter</div>
+          <div style="font-size: 26px; font-weight: 700; background: linear-gradient(135deg, var(--amber), var(--rose)); -webkit-background-clip: text; background-clip: text; color: transparent; line-height: 1.2;">
+            More Parquet tech debt &middot; more audit exposure &middot; more bespoke drift
+          </div>
+        </div>
+        <div class="text-faint small" style="max-width: 520px; text-align: right;">
+          Every additional month on Parquet adds more producer implementations to eventually migrate,
+          more schema-drift incidents, and more divergence from where the rest of your ecosystem is headed.
         </div>
       </div>
     </div>
@@ -594,30 +643,169 @@
       <h2>Compress per-producer onboarding from weeks to days &mdash; without giving up compliance.</h2>
 
       <div class="grid cols-4 mt-8">
-        <div class="stat"><div class="num">9</div><div class="label">slash-command skills producers invoke directly</div></div>
-        <div class="stat"><div class="num">5</div><div class="label">specialized agents (opus + sonnet orchestration)</div></div>
+        <div class="stat"><div class="num">~80%</div><div class="label">reduction in per-producer onboarding engineering time</div></div>
+        <div class="stat"><div class="num">0</div><div class="label">cross-region S3 reads at runtime &middot; no MRAPs</div></div>
         <div class="stat"><div class="num">6</div><div class="label">AWS producer tech stacks covered on day one</div></div>
-        <div class="stat"><div class="num">2</div><div class="label">built-in org presets: strict isolation &amp; central lake</div></div>
+        <div class="stat"><div class="num">100%</div><div class="label">reviewable output &mdash; code and HCL, no black box</div></div>
       </div>
 
       <div class="grid cols-2 mt-10">
         <div class="card accent-emerald accent-left">
           <h3 class="accent-emerald">What this delivers</h3>
           <ul class="list tight" style="margin-top: 10px;">
-            <li>Standardizes Iceberg decisions across the mesh, owned by the platform team.</li>
-            <li>Cuts per-producer onboarding time by <b>~80%</b> in the expected path.</li>
-            <li>Makes &ldquo;no cross-region S3, no MRAP&rdquo; a first-class option, not a reviewer&rsquo;s footnote.</li>
-            <li>Produces reviewable, version-controllable artifacts &mdash; the opposite of a black box.</li>
+            <li><b>Standardized Iceberg posture</b> across the mesh &mdash; one governed path, owned by the platform team.</li>
+            <li><b>Faster time-to-value</b>: first production table in days; new producers onboarded in a sprint, not a quarter.</li>
+            <li><b>Compliance as default</b>: &ldquo;no cross-region S3, no MRAPs&rdquo; is a first-class preset, not a reviewer&rsquo;s footnote.</li>
+            <li><b>No vendor lock-in</b>: output is plain PySpark, PyIceberg, Java, and Terraform in your repo.</li>
           </ul>
         </div>
         <div class="card accent-left" style="border-color: rgba(251,191,36,0.3);">
           <h3 style="color: var(--amber);">What this is not</h3>
           <ul class="list tight" style="margin-top: 10px;">
-            <li>Not a runtime library or a SaaS service. Nothing to buy, nothing to operate.</li>
-            <li>Not a lock-in &mdash; output is plain PySpark, PyIceberg, Java, and Terraform.</li>
-            <li>Not a replacement for platform-team judgment. It generates; you approve.</li>
-            <li>Not cross-cloud. v1.0 is AWS + Glue Catalog only by design.</li>
+            <li>Not a runtime library or a SaaS service. Nothing new to operate at 3&nbsp;AM.</li>
+            <li>Not a competitor to Glue, EMR, or Athena &mdash; it generates artifacts that run on them.</li>
+            <li>Not a replacement for platform-team judgment. It generates; your team approves.</li>
+            <li>Not cross-cloud. v1.0 is AWS + Glue Catalog only by design (see roadmap).</li>
           </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 4b. BUSINESS CASE ===================== -->
+  <section class="slide" data-title="Business case">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill mgmt"><span class="pip"></span>Leadership</span>
+      </div>
+      <div class="eyebrow">Business case &middot; illustrative model</div>
+      <h2>Economics on a mid-sized Data Mesh (25 producers).</h2>
+      <p class="lede mt-4" style="max-width: 1000px;">
+        Numbers below are illustrative, not a quote. Replace the rate and producer count with your own assumptions;
+        the structure of the case does not change.
+      </p>
+
+      <div class="grid cols-2 mt-8">
+        <div class="card accent-amber accent-left">
+          <h3 style="color: var(--amber);">Status quo &mdash; DIY per producer</h3>
+          <ul class="list tight mt-4">
+            <li>Typical per-producer migration: <b>4&ndash;6 engineer-weeks</b> of senior-data-engineering time</li>
+            <li>Blended fully-loaded rate: <b>$6,000 / engineer-week</b></li>
+            <li>25 producers &times; 5 weeks &times; $6k = <b style="color: var(--rose);">~$750K</b> in engineering cost alone</li>
+            <li>Plus: re-reviewing the same Iceberg pitfalls 25 times &mdash; Glue bookmark lifecycle, PyIceberg region keys, Java writer orphan cleanup, IAM scope drift</li>
+            <li>Plus: inconsistent DR posture across producers &mdash; audit risk that compounds</li>
+          </ul>
+        </div>
+        <div class="card accent-emerald accent-left">
+          <h3 class="accent-emerald">With Iceshelf</h3>
+          <ul class="list tight mt-4">
+            <li>Per-producer migration: <b>3&ndash;5 engineer-days</b> (profile + onboard + review + deploy)</li>
+            <li>25 producers &times; 4 days &times; $1,200 = <b class="accent-emerald">~$120K</b> in engineering cost</li>
+            <li>Correctness traps baked into the generator &mdash; each is solved once, reused forever</li>
+            <li>Platform preset encodes DR posture once &mdash; audit evidence is uniform across producers</li>
+            <li>Net engineering saving: <b style="color: var(--emerald);">~$630K</b> &middot; Payback: typically before producer #3</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="grid cols-4 mt-8">
+        <div class="stat"><div class="num accent-emerald">~$630K</div><div class="label">illustrative engineering savings at 25 producers</div></div>
+        <div class="stat"><div class="num accent">~85%</div><div class="label">reduction in time-to-first-production-table</div></div>
+        <div class="stat"><div class="num accent-violet">1</div><div class="label">audited DR posture across the entire mesh</div></div>
+        <div class="stat"><div class="num" style="color: var(--amber);">&lt; 3</div><div class="label">producers to reach payback on platform investment</div></div>
+      </div>
+
+      <p class="small text-faint mt-6">
+        Risk-reduction value (avoided audit findings, avoided data-mesh drift, avoided regression on Iceberg pitfalls)
+        is not included in the $630K figure &mdash; add it separately based on your own audit cost baseline.
+      </p>
+    </div>
+  </section>
+
+  <!-- ===================== 4c. HOW IT COMPARES ===================== -->
+  <section class="slide" data-title="How it compares">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill arch"><span class="pip"></span>Architect</span>
+        <span class="pill mgmt"><span class="pip"></span>Leadership</span>
+      </div>
+      <div class="eyebrow">How Iceshelf compares</div>
+      <h2>Where this sits relative to the obvious alternatives.</h2>
+      <p class="lede mt-4" style="max-width: 1000px;">
+        Iceshelf is not competing with Glue, Databricks, or Snowflake. It is a <b>governed onboarding accelerator</b>
+        that sits in front of whatever compute you already own &mdash; and keeps your data in your account, in open format.
+      </p>
+
+      <div class="card mt-8" style="padding: 6px;">
+        <table class="t">
+          <thead>
+            <tr>
+              <th style="width: 170px;">Option</th>
+              <th style="width: 220px;">What you actually get</th>
+              <th>Data &amp; code ownership</th>
+              <th style="width: 200px;">Strict multi-region fit</th>
+              <th style="width: 140px;">Time to first table</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="background: rgba(34,211,238,0.06);">
+              <td><b class="accent">Iceshelf</b></td>
+              <td>Profile-driven generator for code, IAM, and multi-region setup &mdash; producer by producer, consistent</td>
+              <td>100% in producer repo &middot; Apache-2.0 &middot; no SaaS</td>
+              <td><b class="accent-emerald">First-class preset</b> &middot; no cross-region S3, no MRAPs</td>
+              <td><b>Days</b> per producer</td>
+            </tr>
+            <tr>
+              <td>DIY per producer</td>
+              <td>Each producer solves Iceberg from scratch; org-wide consistency depends on heroics</td>
+              <td>Full &middot; but divergent across producers</td>
+              <td>Possible but re-earned per producer</td>
+              <td>4&ndash;6 weeks per producer</td>
+            </tr>
+            <tr>
+              <td>Databricks / Unity Catalog (Tabular)</td>
+              <td>Managed lakehouse + governance; requires workload migration to Databricks runtime</td>
+              <td>Data in S3, runtime on Databricks</td>
+              <td>Cross-region access patterns vary by account config</td>
+              <td>Weeks (platform onboarding)</td>
+            </tr>
+            <tr>
+              <td>Snowflake Open Catalog / Polaris</td>
+              <td>Iceberg REST catalog + Snowflake read/write; great if Snowflake is already your primary compute</td>
+              <td>Catalog hosted by Snowflake</td>
+              <td>Not its focus; not a compliance preset</td>
+              <td>Weeks (catalog onboarding)</td>
+            </tr>
+            <tr>
+              <td>AWS Glue Iceberg helpers</td>
+              <td>In-runtime format support &mdash; every producer still writes their own pipeline, IAM, and DR</td>
+              <td>Full, but no codegen or standard</td>
+              <td>Must be designed per producer</td>
+              <td>Same as DIY</td>
+            </tr>
+            <tr>
+              <td>Dremio / Starburst (hosted lakehouse)</td>
+              <td>Query engine + catalog product; strong for read; write story depends on ingestion</td>
+              <td>Query runtime hosted; data in S3</td>
+              <td>Depends on deployment model</td>
+              <td>Weeks (engine onboarding)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mt-6 grid cols-3">
+        <div class="card accent-cyan accent-left">
+          <h3 class="accent">Complement, not replace</h3>
+          <p class="small mt-4">Your Databricks, Snowflake, Athena, or EMR investments are preserved. Iceshelf generates the <em>producer side</em> &mdash; the compute reading these tables is whatever you already run.</p>
+        </div>
+        <div class="card accent-violet accent-left">
+          <h3 class="accent-violet">Zero-egress by design</h3>
+          <p class="small mt-4">All output lives in the producer&rsquo;s own AWS account. No metadata leaves the account. No catalog hosted by a third party.</p>
+        </div>
+        <div class="card accent-emerald accent-left">
+          <h3 class="accent-emerald">Exit cost: zero</h3>
+          <p class="small mt-4">If Iceshelf goes away tomorrow, the tables, code, and Terraform it generated continue working &mdash; they are just standard AWS artifacts.</p>
         </div>
       </div>
     </div>
@@ -884,6 +1072,183 @@
         <div class="card"><h3 class="accent-violet">No MRAPs</h3><p class="small mt-4">Multi-Region Access Points are explicitly not used. Each region has its own bucket.</p></div>
         <div class="card"><h3 class="accent-emerald">Per-region queryable</h3><p class="small mt-4">Athena, Glue, EMR in the DR region hit the local catalog and local bucket.</p></div>
         <div class="card"><h3 style="color: var(--amber);">Auditable failover</h3><p class="small mt-4">Failover runbook generated alongside the code. No runtime surprises.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 8a. RPO / RTO & FAILURE MODES ===================== -->
+  <section class="slide" data-title="RPO / RTO &amp; failure modes">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill arch"><span class="pip"></span>Architect</span>
+        <span class="pill mgmt"><span class="pip"></span>Leadership</span>
+      </div>
+      <div class="eyebrow">Resilience &middot; numbers you can put on a risk register</div>
+      <h2>RPO, RTO, and the failure modes we planned for.</h2>
+      <p class="lede mt-4" style="max-width: 1000px;">
+        Targets are contract-grade defaults, tunable per producer via the profile. Every number below is a knob, not a guess &mdash; we generate the CloudWatch alarms to prove them.
+      </p>
+
+      <div class="grid cols-2 mt-8">
+        <div class="card accent-cyan accent-left">
+          <h3 class="accent">Recovery targets (default profile)</h3>
+          <table class="t mt-4">
+            <thead>
+              <tr><th>Metric</th><th>Target</th><th>Driver</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><b>RPO</b> &mdash; data loss window</td><td><span class="mono" style="color: var(--emerald);">&le; 20 min</span></td><td>S3 CRR lag p99 + last repointed snapshot age</td></tr>
+              <tr><td><b>RTO</b> &mdash; time to query in DR</td><td><span class="mono" style="color: var(--emerald);">&le; 60 min</span></td><td>Repointing job + Glue re-register + runbook sign-off</td></tr>
+              <tr><td>Repointing cadence</td><td><span class="mono">every 15 min</span></td><td>Scheduled EventBridge &rarr; Lambda/Step Functions</td></tr>
+              <tr><td>CRR replication SLA (AWS)</td><td><span class="mono">15 min for 99%</span></td><td>S3 Replication Time Control (RTC), opt-in per profile</td></tr>
+              <tr><td>Snapshot retention (DR-queryable)</td><td><span class="mono">7 days default</span></td><td>Snapshot expiration policy, overridable in preset</td></tr>
+              <tr><td>Failover decision SLA</td><td><span class="mono">&le; 15 min</span></td><td>Human gate in runbook; alarms page on-call</td></tr>
+            </tbody>
+          </table>
+          <p class="small text-faint mt-4">Tighter targets supported &mdash; e.g. 5-minute RPO with RTC + 5-minute repointing &mdash; at higher CRR cost. The profile makes the tradeoff explicit.</p>
+        </div>
+
+        <div class="card accent-violet accent-left">
+          <h3 class="accent-violet">Failure-mode matrix</h3>
+          <table class="t mt-4">
+            <thead>
+              <tr><th>Scenario</th><th>Detection</th><th>Behavior</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>CRR lag spike (&gt; 30 min)</td>
+                <td>CloudWatch alarm on <code class="mono">BytesPendingReplication</code></td>
+                <td>Repointing skips that commit; DR stays on last-known-good snapshot; page on-call.</td>
+              </tr>
+              <tr>
+                <td>Repointing job fails mid-rewrite</td>
+                <td>Step Functions task failure + alarm</td>
+                <td>Atomic swap: DR catalog keeps prior <code class="mono">metadata_location</code>. No partial state.</td>
+              </tr>
+              <tr>
+                <td>Primary-region write during failover</td>
+                <td>Runbook gate: primary write-disable before cutover</td>
+                <td>Writers suspended (IAM deny) &rarr; final repointing &rarr; DR takes writes. No split-brain.</td>
+              </tr>
+              <tr>
+                <td>Stale DR catalog at query time</td>
+                <td>Snapshot-age metric per table</td>
+                <td>Readers see last repointed snapshot; alarm fires if age exceeds RPO budget.</td>
+              </tr>
+              <tr>
+                <td>Orphaned data files in DR bucket</td>
+                <td>Monthly orphan-cleanup job</td>
+                <td>Files older than retention + unreferenced are GC&rsquo;d. Repointing never deletes.</td>
+              </tr>
+              <tr>
+                <td>Failback to primary after outage</td>
+                <td>Runbook: reverse CRR + repoint the other way</td>
+                <td>Same utility, flipped source/target. Primary re-registered from DR&rsquo;s current state.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="grid cols-3 mt-8">
+        <div class="card accent-emerald accent-left">
+          <h3 class="accent-emerald">What we test</h3>
+          <ul class="list tight mt-4">
+            <li>Quarterly game-day: simulated primary-region outage with stopwatch</li>
+            <li>Chaos tests: repointing job killed mid-run, CRR throttled, Glue register denied</li>
+            <li>DR query correctness: hash-compare row counts &amp; sample partitions across regions</li>
+          </ul>
+        </div>
+        <div class="card" style="border-color: rgba(251,191,36,0.3);">
+          <h3 style="color: var(--amber);">Known constraints</h3>
+          <ul class="list tight mt-4">
+            <li>CRR is eventually consistent &mdash; sub-minute RPO is not achievable without synchronous cross-region writes (prohibited)</li>
+            <li>DDL changes must be re-applied in DR catalog; captured in runbook, not automatic</li>
+            <li>Active-active writes are out of scope; pattern is active-passive by design</li>
+          </ul>
+        </div>
+        <div class="card accent-cyan accent-left">
+          <h3 class="accent">Evidence for audit</h3>
+          <ul class="list tight mt-4">
+            <li>Game-day report template pre-populated from CloudWatch</li>
+            <li>RPO/RTO dashboards per producer + fleet rollup</li>
+            <li>Runbook is version-controlled alongside the pipeline code &mdash; one source of truth</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 8b. SECURITY & COMPLIANCE ===================== -->
+  <section class="slide" data-title="Security &amp; compliance">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill arch"><span class="pip"></span>Architect</span>
+        <span class="pill mgmt"><span class="pip"></span>Leadership</span>
+      </div>
+      <div class="eyebrow">Security, compliance &amp; governance</div>
+      <h2>Defensible by default &mdash; built for security review, not around it.</h2>
+
+      <div class="grid cols-2 mt-8">
+        <div class="card accent-cyan accent-left">
+          <h3 class="accent">Identity &amp; access</h3>
+          <ul class="list tight mt-4">
+            <li>IAM policies scoped to <code>arn:aws:glue:REGION:ACCOUNT:database/&lt;db&gt;</code> and <code>table/&lt;db&gt;/*</code> &mdash; never <code>"*"</code></li>
+            <li>Lake Formation fine-grained access supported via profile (<code>lf_tags</code>)</li>
+            <li>Separate read, write, and maintenance roles generated per producer</li>
+            <li>No cross-account catalog writes by default; opt-in via explicit resource policy</li>
+          </ul>
+        </div>
+        <div class="card accent-violet accent-left">
+          <h3 class="accent-violet">Encryption &amp; key management</h3>
+          <ul class="list tight mt-4">
+            <li>S3 bucket encryption defaults to <code>aws:kms</code> with a CMK alias pinned in the profile</li>
+            <li>Glue Catalog encryption supported; connection-credential encryption enforced when declared</li>
+            <li>Per-producer CMK isolation possible &mdash; one key per data domain is a one-line profile change</li>
+            <li>Key-grant list captured in profile so rotation &amp; audit are scripted, not tribal knowledge</li>
+          </ul>
+        </div>
+        <div class="card accent-emerald accent-left">
+          <h3 class="accent-emerald">Network isolation</h3>
+          <ul class="list tight mt-4">
+            <li>VPC endpoints for S3 &middot; Glue &middot; STS &middot; KMS &middot; CloudWatch encoded in generated Terraform</li>
+            <li>Generated code never requires public egress to an Iceshelf-hosted service (there is none)</li>
+            <li>Private-subnet-only deployments supported out of the box</li>
+            <li>Multi-region: every data-path hop stays in-region; CRR is the only inter-region flow</li>
+          </ul>
+        </div>
+        <div class="card accent-left" style="border-color: rgba(251,191,36,0.3);">
+          <h3 style="color: var(--amber);">Audit &amp; governance</h3>
+          <ul class="list tight mt-4">
+            <li>Profile &amp; generated artifacts are diff-reviewable in Git &mdash; every change is attributable</li>
+            <li>Required-tags enforced at generation time (e.g. <code>CostCenter</code>, <code>DataClassification</code>, <code>Owner</code>)</li>
+            <li>Optional audit bucket pattern: every Iceberg commit event mirrored for WORM retention</li>
+            <li>Snapshot expiration + orphan cleanup scheduled with retention windows the auditor can read</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="mt-8 card">
+        <h3>Control-framework alignment</h3>
+        <div class="grid cols-4 mt-4">
+          <div>
+            <div class="mono small" style="color: var(--cyan);">SOC&nbsp;2</div>
+            <p class="small mt-2">Least-privilege IAM, change-controlled artifacts, encryption-at-rest defaults, traceable commits.</p>
+          </div>
+          <div>
+            <div class="mono small" style="color: var(--violet);">HIPAA&nbsp;/&nbsp;PHI</div>
+            <p class="small mt-2">CMK per domain, VPC-only network path, Lake Formation row/column access, audit-log mirroring.</p>
+          </div>
+          <div>
+            <div class="mono small" style="color: var(--emerald);">PCI-DSS</div>
+            <p class="small mt-2">Tokenization is upstream; Iceshelf preserves strict access scoping and supports segregated key hierarchy.</p>
+          </div>
+          <div>
+            <div class="mono small" style="color: var(--amber);">FedRAMP / IL5-adjacent</div>
+            <p class="small mt-2">No cross-region S3, no MRAPs, no third-party runtime. Artifacts deployable in GovCloud with a profile swap.</p>
+          </div>
+        </div>
+        <p class="small text-faint mt-6">Iceshelf is a code generator; it cannot <em>be certified</em>, but its output is designed so that <em>your</em> pipelines pass the controls that matter for each framework. Specific framework attestations remain your responsibility.</p>
       </div>
     </div>
   </section>
@@ -1260,6 +1625,86 @@
       </div>
 
       <div class="mt-10 text-faint small">Roadmap is intentionally conservative. We&rsquo;d rather ship one catalog perfectly than four partially.</div>
+    </div>
+  </section>
+
+  <!-- ===================== 15b. PILOT PROPOSAL ===================== -->
+  <section class="slide" data-title="Pilot proposal">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill mgmt"><span class="pip"></span>Leadership</span>
+        <span class="pill arch"><span class="pip"></span>Architect</span>
+      </div>
+      <div class="eyebrow">The ask &middot; 90-day pilot</div>
+      <h2>Two producers. One quarter. Clear decision gate at week&nbsp;12.</h2>
+      <p class="lede mt-4" style="max-width: 1000px;">
+        We are asking for a bounded pilot with measurable exit criteria &mdash; not a mesh-wide rollout on trust. If the numbers don&rsquo;t land, you walk away with generated code you already own.
+      </p>
+
+      <div class="grid cols-2 mt-8">
+        <div class="card accent-cyan accent-left">
+          <h3 class="accent">Scope &amp; shape</h3>
+          <ul class="list tight mt-4">
+            <li><b>Two producers</b> &mdash; one PySpark (Glue or EMR), one PyIceberg (ECS or Lambda). Covers both code-generation paths.</li>
+            <li><b>One region pair</b> &mdash; e.g. <code class="mono">us-east-1 / us-west-2</code>, with full multi-region flow exercised.</li>
+            <li><b>One preset</b> &mdash; <code class="mono">aws-glue-datamesh-strict</code> by default. Customized once; reused by both pilots.</li>
+            <li><b>Dry-run first</b> &mdash; generated code reviewed in a PR against a sandbox account before any production table is touched.</li>
+          </ul>
+        </div>
+
+        <div class="card accent-violet accent-left">
+          <h3 class="accent-violet">Timeline (12 weeks)</h3>
+          <table class="t mt-4">
+            <thead><tr><th>Week</th><th>Milestone</th></tr></thead>
+            <tbody>
+              <tr><td>1&ndash;2</td><td>Preset customization &amp; sign-off; sandbox account ready; producer profiles captured.</td></tr>
+              <tr><td>3&ndash;5</td><td>Producer #1: onboard &rarr; DDL &rarr; first ingestion &rarr; maintenance jobs scheduled.</td></tr>
+              <tr><td>6&ndash;7</td><td>Multi-region enabled for Producer #1: CRR, repointing, DR catalog, runbook.</td></tr>
+              <tr><td>8&ndash;9</td><td>Producer #2 onboarded on the same preset; reuse validates the &ldquo;same quality bar&rdquo; claim.</td></tr>
+              <tr><td>10</td><td>Game-day: simulated primary-region outage; RPO/RTO captured on stopwatch.</td></tr>
+              <tr><td>11</td><td>Security review, cost review, and auditor walkthrough of generated artifacts.</td></tr>
+              <tr><td>12</td><td><b>Decision gate</b>: go / no-go on mesh-wide rollout, based on exit criteria.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="grid cols-2 mt-8">
+        <div class="card accent-emerald accent-left">
+          <h3 class="accent-emerald">Exit criteria (all must pass)</h3>
+          <ul class="list tight mt-4">
+            <li>Both producers ingesting to Iceberg in production with zero manual post-generation edits to the pipeline code path</li>
+            <li>Measured onboarding effort &le; <b>2 person-weeks per producer</b> (vs 10&ndash;12 for DIY baseline)</li>
+            <li>Game-day hits <b>RPO &le; 20 min</b> and <b>RTO &le; 60 min</b> with runbook only &mdash; no ad-hoc intervention</li>
+            <li>Security &amp; compliance review signs off on generated IAM, KMS, VPC, and audit posture</li>
+            <li>Cost review confirms unit economics within <b>&plusmn;15%</b> of business-case model</li>
+          </ul>
+        </div>
+
+        <div class="card" style="border-color: rgba(251,191,36,0.3);">
+          <h3 style="color: var(--amber);">What we need from you</h3>
+          <ul class="list tight mt-4">
+            <li><b>Executive sponsor</b> to clear org-level blockers (IAM policy boundaries, preset approval, security gates)</li>
+            <li><b>Platform-team lead</b> &mdash; 0.5 FTE for 12 weeks &mdash; owns the preset and reviews generated artifacts</li>
+            <li><b>Two producer teams</b> &mdash; ~0.25 FTE each &mdash; participate in profile capture, review, and cutover</li>
+            <li><b>Sandbox AWS account</b> with the target region pair, or equivalent VPC/subnet posture to production</li>
+            <li><b>Security reviewer</b> available for a single-session walkthrough at week 11</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card mt-8" style="background: linear-gradient(180deg, rgba(34,211,238,0.06), rgba(167,139,250,0.04)); border-color: var(--border-strong);">
+        <div class="row space-between">
+          <div>
+            <div class="mono small text-faint">If we hit exit criteria</div>
+            <div style="font-size: 18px; font-weight: 700;" class="accent">Expand to wave 2: 5&ndash;8 producers in the following quarter.</div>
+          </div>
+          <div style="text-align: right;">
+            <div class="mono small text-faint">If we miss them</div>
+            <div style="font-size: 18px; font-weight: 700; color: var(--amber);">You keep all generated code. No lock-in, no exit cost.</div>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
