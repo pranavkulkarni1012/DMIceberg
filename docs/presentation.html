@@ -1,0 +1,1419 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DMIceberg v1.0.0 &mdash; Executive & Technical Overview</title>
+<meta name="description" content="DMIceberg: Apache Iceberg onboarding platform for AWS Data Mesh producers. Senior-leadership, architect, and developer briefing deck." />
+<style>
+  :root {
+    --bg-0: #05070f;
+    --bg-1: #0b1020;
+    --bg-2: #0f172a;
+    --surface: #111827;
+    --surface-2: #0e1627;
+    --border: #1f2a44;
+    --border-strong: #2b3a5f;
+    --text: #e6edf7;
+    --text-dim: #9aa7bd;
+    --text-faint: #6b7890;
+    --cyan: #22d3ee;
+    --emerald: #34d399;
+    --violet: #a78bfa;
+    --amber: #fbbf24;
+    --rose: #fb7185;
+    --sky: #7dd3fc;
+    --mono: ui-monospace, "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+    --sans: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    color: var(--text);
+    background:
+      radial-gradient(1200px 700px at 85% -10%, rgba(34,211,238,0.10), transparent 60%),
+      radial-gradient(1000px 600px at -10% 110%, rgba(167,139,250,0.10), transparent 60%),
+      linear-gradient(180deg, var(--bg-0), var(--bg-2));
+    min-height: 100vh;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(148,163,184,0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148,163,184,0.035) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.6), transparent 80%);
+    -webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.6), transparent 80%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .deck { position: relative; z-index: 1; }
+
+  /* ===== Chrome: progress bar, counter, nav ===== */
+  .progress {
+    position: fixed; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, var(--cyan), var(--violet));
+    transform-origin: left center;
+    transform: scaleX(0.08);
+    transition: transform 400ms cubic-bezier(.2,.8,.2,1);
+    z-index: 50;
+  }
+
+  .topbar {
+    position: fixed; top: 14px; left: 20px; right: 20px;
+    display: flex; justify-content: space-between; align-items: center;
+    z-index: 40; pointer-events: none;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 700; letter-spacing: 0.02em;
+    font-size: 14px; color: var(--text-dim);
+  }
+  .brand .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--violet));
+    box-shadow: 0 0 20px rgba(34,211,238,0.55);
+  }
+  .counter {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    background: rgba(15,23,42,0.6);
+    border: 1px solid var(--border);
+    padding: 6px 10px; border-radius: 999px;
+    pointer-events: auto;
+    display: inline-flex; align-items: center; gap: 10px;
+  }
+  .counter b { color: var(--text); font-weight: 700; }
+  .counter .t-title {
+    color: var(--text-dim);
+    padding-left: 10px;
+    border-left: 1px solid var(--border);
+    letter-spacing: 0.02em;
+    font-family: var(--sans);
+    font-size: 12px;
+  }
+
+  .bottombar {
+    position: fixed; bottom: 18px; left: 0; right: 0;
+    display: flex; justify-content: center; gap: 8px;
+    z-index: 40;
+  }
+  .dotnav { display: flex; gap: 6px; }
+  .dotnav button {
+    appearance: none; border: 0; cursor: pointer;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #2a3958; padding: 0;
+    transition: transform 180ms ease, background 180ms ease, width 180ms ease;
+  }
+  .dotnav button.active {
+    background: linear-gradient(135deg, var(--cyan), var(--violet));
+    width: 22px; border-radius: 4px;
+  }
+  .dotnav button:hover { transform: scale(1.2); }
+
+  .navhint {
+    position: fixed; bottom: 22px; right: 22px;
+    font-family: var(--mono); font-size: 11px; color: var(--text-faint);
+    z-index: 40;
+  }
+  .navhint kbd {
+    font-family: var(--mono);
+    background: rgba(15,23,42,0.7);
+    border: 1px solid var(--border);
+    padding: 2px 6px; border-radius: 4px;
+    margin: 0 2px;
+  }
+
+  /* ===== Slide frame ===== */
+  .deck { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+  .slide {
+    position: absolute; inset: 0;
+    padding: 72px clamp(32px, 6vw, 96px) 80px;
+    display: flex; flex-direction: column; justify-content: center;
+    opacity: 0; transform: translateY(16px);
+    transition: opacity 420ms ease, transform 420ms cubic-bezier(.2,.8,.2,1);
+    pointer-events: none;
+    overflow-y: auto;
+  }
+  .slide.active { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  .slide.active .card,
+  .slide.active .stat,
+  .slide.active .region-card,
+  .slide.active .node {
+    animation: rise 520ms cubic-bezier(.2,.8,.2,1) both;
+  }
+  .slide.active .card:nth-child(2),
+  .slide.active .stat:nth-child(2) { animation-delay: 70ms; }
+  .slide.active .card:nth-child(3),
+  .slide.active .stat:nth-child(3) { animation-delay: 140ms; }
+  .slide.active .card:nth-child(4),
+  .slide.active .stat:nth-child(4) { animation-delay: 210ms; }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .slide, .slide.active .card, .slide.active .stat,
+    .slide.active .region-card, .slide.active .node {
+      animation: none !important; transition: none !important; transform: none !important;
+    }
+  }
+
+  .slide-inner {
+    max-width: 1280px; margin: 0 auto; width: 100%;
+  }
+
+  /* ===== Typography ===== */
+  h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -0.015em; line-height: 1.1; }
+  h1 { font-size: clamp(40px, 5vw, 72px); }
+  h2 { font-size: clamp(28px, 3.2vw, 44px); }
+  h3 { font-size: clamp(18px, 1.4vw, 22px); font-weight: 600; }
+  p  { line-height: 1.55; color: var(--text-dim); font-size: clamp(15px, 1.15vw, 17px); margin: 0; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--cyan);
+    margin-bottom: 18px; display: inline-flex; align-items: center; gap: 10px;
+  }
+  .eyebrow::before {
+    content: ""; width: 24px; height: 2px; background: var(--cyan);
+    display: inline-block; box-shadow: 0 0 14px var(--cyan);
+  }
+  .lede { color: var(--text); font-size: clamp(18px, 1.5vw, 22px); line-height: 1.45; }
+  .text-dim { color: var(--text-dim); }
+  .text-faint { color: var(--text-faint); }
+  .accent { color: var(--cyan); }
+  .accent-violet { color: var(--violet); }
+  .accent-emerald { color: var(--emerald); }
+
+  /* ===== Audience pills ===== */
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px;
+    border: 1px solid var(--border-strong); background: rgba(15,23,42,0.55);
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text-dim);
+  }
+  .pill .pip { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); }
+  .pill.mgmt   { color: var(--amber);   border-color: rgba(251,191,36,0.45); }
+  .pill.mgmt   .pip { background: var(--amber);   box-shadow: 0 0 8px var(--amber);   }
+  .pill.arch   { color: var(--violet);  border-color: rgba(167,139,250,0.45); }
+  .pill.arch   .pip { background: var(--violet);  box-shadow: 0 0 8px var(--violet);  }
+  .pill.dev    { color: var(--emerald); border-color: rgba(52,211,153,0.45); }
+  .pill.dev    .pip { background: var(--emerald); box-shadow: 0 0 8px var(--emerald); }
+  .pill.all    { color: var(--cyan);    border-color: rgba(34,211,238,0.45); }
+  .pill.all    .pip { background: var(--cyan);    box-shadow: 0 0 8px var(--cyan);    }
+  .pill-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 22px; }
+
+  /* ===== Card primitives ===== */
+  .card {
+    background: linear-gradient(180deg, rgba(17,24,39,0.9), rgba(14,22,39,0.9));
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 22px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 200ms ease, transform 200ms ease;
+  }
+  .card:hover { border-color: var(--border-strong); }
+  .card h3 { margin-bottom: 8px; }
+  .card p { font-size: 14px; }
+  .card.accent-left::before {
+    content: ""; position: absolute; top: 0; left: 0; bottom: 0; width: 3px;
+    background: linear-gradient(180deg, var(--cyan), var(--violet));
+  }
+  .card.accent-cyan::before     { background: var(--cyan);    box-shadow: 0 0 14px var(--cyan);    }
+  .card.accent-violet::before   { background: var(--violet);  box-shadow: 0 0 14px var(--violet);  }
+  .card.accent-emerald::before  { background: var(--emerald); box-shadow: 0 0 14px var(--emerald); }
+  .card.accent-amber::before    { background: var(--amber);   box-shadow: 0 0 14px var(--amber);   }
+
+  .grid { display: grid; gap: 18px; }
+  .grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+  .grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 900px) {
+    .grid.cols-3, .grid.cols-4 { grid-template-columns: 1fr 1fr; }
+  }
+
+  /* ===== Stat cards ===== */
+  .stat {
+    background: linear-gradient(180deg, rgba(17,24,39,0.9), rgba(14,22,39,0.9));
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    position: relative; overflow: hidden;
+  }
+  .stat .num {
+    font-family: var(--mono);
+    font-size: clamp(40px, 4.2vw, 64px);
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--cyan), var(--violet));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    letter-spacing: -0.03em; line-height: 1;
+  }
+  .stat .label {
+    margin-top: 8px; color: var(--text-dim); font-size: 14px;
+  }
+
+  /* ===== Code blocks ===== */
+  pre.code {
+    font-family: var(--mono); font-size: 13px;
+    background: #060a16; border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px;
+    color: #cbd5e1; overflow: auto; line-height: 1.55;
+    margin: 0;
+  }
+  pre.code .k  { color: var(--violet); }
+  pre.code .s  { color: var(--emerald); }
+  pre.code .c  { color: var(--text-faint); font-style: italic; }
+  pre.code .n  { color: var(--sky); }
+  pre.code .p  { color: var(--cyan); }
+  pre.code .f  { color: var(--amber); }
+
+  /* ===== Tables ===== */
+  table.t {
+    width: 100%; border-collapse: collapse;
+    font-size: 14px;
+  }
+  table.t th, table.t td {
+    text-align: left; padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  table.t th {
+    color: var(--text-faint); font-weight: 600; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    background: rgba(15,23,42,0.4);
+  }
+  table.t tr:hover td { background: rgba(34,211,238,0.03); }
+  table.t code {
+    font-family: var(--mono); font-size: 12.5px;
+    background: rgba(34,211,238,0.08);
+    color: var(--cyan);
+    padding: 2px 6px; border-radius: 4px;
+  }
+
+  /* ===== Utility ===== */
+  .row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .space-between { justify-content: space-between; }
+  .mt-4 { margin-top: 16px; }  .mt-6 { margin-top: 24px; }
+  .mt-8 { margin-top: 32px; }  .mt-10 { margin-top: 40px; }
+  .mb-4 { margin-bottom: 16px; } .mb-6 { margin-bottom: 24px; }
+  .gap-2 { gap: 8px; } .gap-4 { gap: 16px; }
+  .text-center { text-align: center; }
+  .mono { font-family: var(--mono); }
+  .small { font-size: 13px; }
+  .list { margin: 0; padding-left: 18px; color: var(--text-dim); line-height: 1.75; }
+  .list li { padding: 2px 0; }
+  .list.tight li { padding: 0; }
+  .list.checked { list-style: none; padding-left: 0; }
+  .list.checked li::before {
+    content: "✓"; color: var(--emerald); font-weight: 700;
+    display: inline-block; width: 22px;
+  }
+  .list.x { list-style: none; padding-left: 0; }
+  .list.x li::before {
+    content: "✕"; color: var(--rose); font-weight: 700;
+    display: inline-block; width: 22px;
+  }
+
+  .divider {
+    height: 1px; background: linear-gradient(90deg, transparent, var(--border-strong), transparent);
+    margin: 28px 0;
+  }
+
+  /* ===== Title slide ===== */
+  .title-hero {
+    display: flex; flex-direction: column; gap: 28px;
+  }
+  .title-hero .title {
+    font-size: clamp(64px, 9vw, 128px);
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 0.95;
+    background: linear-gradient(135deg, #fff 0%, #cbd5e1 50%, var(--cyan) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    position: relative;
+    display: inline-block;
+  }
+  .title-hero .title::after {
+    content: "";
+    position: absolute; left: -5%; right: -5%; top: 10%; bottom: -10%;
+    background: radial-gradient(60% 50% at 50% 50%, rgba(34,211,238,0.18), transparent 70%);
+    z-index: -1;
+    filter: blur(30px);
+    pointer-events: none;
+  }
+  .title-hero .kicker {
+    font-size: clamp(18px, 1.6vw, 24px);
+    color: var(--text-dim); max-width: 900px; line-height: 1.4;
+  }
+  .badge-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+  .badge {
+    font-family: var(--mono); font-size: 12px;
+    padding: 6px 12px; border-radius: 8px;
+    background: rgba(34,211,238,0.08);
+    color: var(--cyan);
+    border: 1px solid rgba(34,211,238,0.28);
+  }
+  .badge.violet { background: rgba(167,139,250,0.08); color: var(--violet); border-color: rgba(167,139,250,0.28); }
+  .badge.emerald { background: rgba(52,211,153,0.08); color: var(--emerald); border-color: rgba(52,211,153,0.28); }
+  .badge.faint { background: rgba(148,163,184,0.06); color: var(--text-dim); border-color: var(--border); }
+
+  /* ===== Diagram primitives ===== */
+  .flow {
+    display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: stretch;
+    gap: 14px; margin-top: 8px;
+  }
+  .flow .node {
+    background: linear-gradient(180deg, rgba(17,24,39,0.9), rgba(14,22,39,0.9));
+    border: 1px solid var(--border-strong);
+    border-radius: 14px; padding: 20px;
+    display: flex; flex-direction: column; gap: 6px;
+    position: relative;
+  }
+  .flow .node .tag {
+    font-family: var(--mono); font-size: 11px; color: var(--cyan); letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .flow .node h3 { font-size: 18px; }
+  .flow .arrow {
+    display: flex; align-items: center; justify-content: center; color: var(--cyan);
+  }
+
+  /* ===== Multi-region diagram ===== */
+  .mr {
+    display: grid; grid-template-columns: 1fr auto 1fr; gap: 24px; align-items: stretch;
+  }
+  .region-card {
+    border: 1px solid var(--border-strong);
+    border-radius: 14px; padding: 22px;
+    background: linear-gradient(180deg, rgba(14,22,39,0.95), rgba(11,16,32,0.95));
+    position: relative;
+  }
+  .region-card::before {
+    content: ""; position: absolute; inset: 0; border-radius: 14px; pointer-events: none;
+    box-shadow: inset 0 0 0 1px rgba(34,211,238,0.15);
+  }
+  .region-card.dr::before { box-shadow: inset 0 0 0 1px rgba(167,139,250,0.18); }
+  .region-card .head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .region-card .head .r {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--cyan); padding: 4px 8px; border-radius: 6px;
+    border: 1px solid rgba(34,211,238,0.35);
+  }
+  .region-card.dr .head .r { color: var(--violet); border-color: rgba(167,139,250,0.4); }
+  .region-card .layer {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 10px 0; border-top: 1px dashed var(--border);
+  }
+  .region-card .layer:first-of-type { border-top: 0; }
+  .region-card .layer .ic {
+    width: 28px; height: 28px; border-radius: 6px;
+    background: rgba(34,211,238,0.08); border: 1px solid rgba(34,211,238,0.28);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; color: var(--cyan); flex: 0 0 auto;
+  }
+  .region-card.dr .layer .ic {
+    background: rgba(167,139,250,0.08); border-color: rgba(167,139,250,0.32); color: var(--violet);
+  }
+  .region-card .layer .ltxt h4 { margin: 0; font-size: 14px; }
+  .region-card .layer .ltxt p  { margin: 2px 0 0; font-size: 12.5px; }
+
+  .mr-link {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; min-width: 140px;
+  }
+  .mr-link .label {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
+    color: var(--text-dim); text-transform: uppercase; text-align: center;
+  }
+  .mr-link svg { display: block; }
+
+  /* ===== Print ===== */
+  @media print {
+    body { background: #fff; color: #111; }
+    .slide { position: relative; opacity: 1; transform: none; page-break-after: always; height: auto; min-height: 100vh; }
+    .topbar, .bottombar, .progress, .navhint { display: none; }
+  }
+
+  /* ===== Scrollbar polish ===== */
+  .slide::-webkit-scrollbar { width: 6px; }
+  .slide::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  pre.code::-webkit-scrollbar { height: 6px; width: 6px; }
+  pre.code::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<div class="topbar">
+  <div class="brand"><span class="dot"></span>DMICEBERG &middot; v1.0.0</div>
+  <div class="counter"><b id="sc-cur">01</b> / <span id="sc-tot">16</span><span class="t-title" id="sc-title">Title</span></div>
+</div>
+
+<main class="deck" id="deck">
+
+  <!-- ===================== 1. TITLE ===================== -->
+  <section class="slide" data-title="Title">
+    <div class="slide-inner title-hero">
+      <div class="eyebrow">Apache Iceberg &middot; AWS Data Mesh &middot; v1.0.0</div>
+      <h1 class="title">DMIceberg</h1>
+      <p class="kicker">
+        From Parquet to production Iceberg &mdash; for six AWS producer stacks, with strict multi-region
+        resilience for regulated environments where cross-region S3 and MRAPs are off the table.
+      </p>
+      <div class="badge-row">
+        <span class="badge">9 slash-command skills</span>
+        <span class="badge violet">5 specialized subagents</span>
+        <span class="badge emerald">6 tech stacks</span>
+        <span class="badge faint">Claude Code plugin &middot; Apache-2.0</span>
+      </div>
+      <div class="row mt-8 text-faint small">
+        <span>Briefing for senior leadership, data platform architects, and producer engineers.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 2. PROBLEM ===================== -->
+  <section class="slide" data-title="Problem">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill mgmt"><span class="pip"></span>Leadership</span>
+        <span class="pill arch"><span class="pip"></span>Architect</span>
+      </div>
+      <div class="eyebrow">The Problem</div>
+      <h2>Migrating a Data Mesh to Iceberg isn&rsquo;t one project. It&rsquo;s N projects.</h2>
+      <p class="lede mt-4" style="max-width: 1000px;">
+        Every producer team re-discovers the same Iceberg pitfalls at a cost of weeks per team, and regulated
+        orgs can&rsquo;t use the textbook multi-region designs at all.
+      </p>
+
+      <div class="grid cols-3 mt-8">
+        <div class="card accent-amber accent-left">
+          <h3>Heterogeneous producers</h3>
+          <p>Glue PySpark, EMR, ECS, Lambda &mdash; in Python and Java. Four Iceberg API surfaces, each with its own correctness traps.</p>
+        </div>
+        <div class="card accent-violet accent-left">
+          <h3>Regulatory constraints</h3>
+          <p>Finance, healthcare, and government often disallow cross-region S3 and Multi-Region Access Points &mdash; ruling out standard DR designs.</p>
+        </div>
+        <div class="card accent-emerald accent-left">
+          <h3>Bespoke mistakes</h3>
+          <p>Missing <code>io-impl</code>, wrong PyIceberg region keys, orphan writers, Glue bookmarks advancing on failed runs. Same bugs, every team.</p>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="row space-between">
+        <div>
+          <div class="mono small text-faint">Status quo per producer</div>
+          <div style="font-size: 32px; font-weight: 700; background: linear-gradient(135deg, var(--amber), var(--rose)); -webkit-background-clip: text; background-clip: text; color: transparent;">
+            4&ndash;6 weeks
+          </div>
+        </div>
+        <div class="text-faint small" style="max-width: 520px; text-align: right;">
+          Multiply by N producers, compound by the risk of silent cross-region S3 calls in regulated audits, and the total bill is a multi-quarter program.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 3. SOLUTION ===================== -->
+  <section class="slide" data-title="Solution">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill all"><span class="pip"></span>All audiences</span>
+      </div>
+      <div class="eyebrow">The Solution</div>
+      <h2>One workflow package. Every producer gets the same validated path.</h2>
+      <p class="lede mt-4" style="max-width: 1000px;">
+        DMIceberg is <em>not</em> a runtime library. It&rsquo;s a set of Claude Code skills and agents that produce
+        reviewable PySpark / PyIceberg / Java / Terraform artifacts your producers deploy themselves.
+      </p>
+
+      <div class="flow mt-10">
+        <div class="node">
+          <span class="tag">Step 1</span>
+          <h3>Producer conventions</h3>
+          <p class="small"><code class="mono">profiles/&lt;name&gt;.yaml</code> captures region pair, bucket, stack, orchestrator, DR posture. Preset inheritance enforces org policy.</p>
+        </div>
+        <div class="arrow">
+          <svg width="36" height="20" viewBox="0 0 36 20" fill="none"><path d="M0 10h32M26 4l6 6-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="node">
+          <span class="tag">Step 2</span>
+          <h3>Onboarding orchestrator</h3>
+          <p class="small">9 skills + 5 agents cooperate. Orchestrator reads the profile, plans artifacts, delegates codegen &amp; multi-region planning in parallel, runs static validation.</p>
+        </div>
+        <div class="arrow">
+          <svg width="36" height="20" viewBox="0 0 36 20" fill="none"><path d="M0 10h32M26 4l6 6-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="node">
+          <span class="tag">Step 3</span>
+          <h3>Deployment package</h3>
+          <p class="small">Table DDL, pipeline code, maintenance job, Terraform IAM scoped to the producer&rsquo;s database ARN, and a rollback plan &mdash; ready for the producer&rsquo;s own CI/CD.</p>
+        </div>
+      </div>
+
+      <div class="mt-10 grid cols-4">
+        <div class="card">
+          <h3 class="accent">Stack-specific</h3>
+          <p class="small">Correct idioms for PySpark, PyIceberg, and Java &mdash; not generic placeholders.</p>
+        </div>
+        <div class="card">
+          <h3 class="accent-violet">Profile-first</h3>
+          <p class="small">Producer conventions captured once; every skill reuses them.</p>
+        </div>
+        <div class="card">
+          <h3 class="accent-emerald">Validated</h3>
+          <p class="small">Static checks for schema, config, IAM, multi-region metadata before you deploy.</p>
+        </div>
+        <div class="card">
+          <h3 style="color: var(--amber);">Reviewable</h3>
+          <p class="small">Output is plain code and HCL. No black-box runtime, no SaaS dependency.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 4. EXECUTIVE SUMMARY ===================== -->
+  <section class="slide" data-title="Executive Summary">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill mgmt"><span class="pip"></span>Leadership</span>
+      </div>
+      <div class="eyebrow">Executive Summary</div>
+      <h2>Compress per-producer onboarding from weeks to days &mdash; without giving up compliance.</h2>
+
+      <div class="grid cols-4 mt-8">
+        <div class="stat"><div class="num">9</div><div class="label">slash-command skills producers invoke directly</div></div>
+        <div class="stat"><div class="num">5</div><div class="label">specialized agents (opus + sonnet orchestration)</div></div>
+        <div class="stat"><div class="num">6</div><div class="label">AWS producer tech stacks covered on day one</div></div>
+        <div class="stat"><div class="num">2</div><div class="label">built-in org presets: strict isolation &amp; central lake</div></div>
+      </div>
+
+      <div class="grid cols-2 mt-10">
+        <div class="card accent-emerald accent-left">
+          <h3 class="accent-emerald">What this delivers</h3>
+          <ul class="list tight" style="margin-top: 10px;">
+            <li>Standardizes Iceberg decisions across the mesh, owned by the platform team.</li>
+            <li>Cuts per-producer onboarding time by <b>~80%</b> in the expected path.</li>
+            <li>Makes &ldquo;no cross-region S3, no MRAP&rdquo; a first-class option, not a reviewer&rsquo;s footnote.</li>
+            <li>Produces reviewable, version-controllable artifacts &mdash; the opposite of a black box.</li>
+          </ul>
+        </div>
+        <div class="card accent-left" style="border-color: rgba(251,191,36,0.3);">
+          <h3 style="color: var(--amber);">What this is not</h3>
+          <ul class="list tight" style="margin-top: 10px;">
+            <li>Not a runtime library or a SaaS service. Nothing to buy, nothing to operate.</li>
+            <li>Not a lock-in &mdash; output is plain PySpark, PyIceberg, Java, and Terraform.</li>
+            <li>Not a replacement for platform-team judgment. It generates; you approve.</li>
+            <li>Not cross-cloud. v1.0 is AWS + Glue Catalog only by design.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 5. AUDIENCES ===================== -->
+  <section class="slide" data-title="Who it's for">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill all"><span class="pip"></span>All audiences</span>
+      </div>
+      <div class="eyebrow">Who DMIceberg is for</div>
+      <h2>Three audiences. One package.</h2>
+
+      <div class="grid cols-3 mt-10">
+        <div class="card accent-amber accent-left">
+          <span class="pill mgmt" style="margin-bottom: 16px;"><span class="pip"></span>Platform / Leadership</span>
+          <h3 style="font-size: 22px;">Own the mesh, roll Iceberg to N producers</h3>
+          <ul class="list tight mt-4">
+            <li>Need a defensible org-wide standard</li>
+            <li>Need to gate producer quality before cutover</li>
+            <li>Need consistent DR posture across producers</li>
+          </ul>
+          <div class="divider" style="margin: 18px 0 14px;"></div>
+          <p class="small"><b>Entry point:</b> <code class="mono">docs/admin-guide.md</code>, the <code class="mono">aws-glue-datamesh-strict</code> preset, and the <code class="mono">/iceberg-onboard</code> orchestrator.</p>
+        </div>
+
+        <div class="card accent-emerald accent-left">
+          <span class="pill dev" style="margin-bottom: 16px;"><span class="pip"></span>Producer engineers</span>
+          <h3 style="font-size: 22px;">Own one pipeline, want to stop writing Parquet</h3>
+          <ul class="list tight mt-4">
+            <li>Don&rsquo;t want to learn every Iceberg option</li>
+            <li>Don&rsquo;t want to rewrite the pipeline from scratch</li>
+            <li>Need a validated, ready-to-deploy artifact</li>
+          </ul>
+          <div class="divider" style="margin: 18px 0 14px;"></div>
+          <p class="small"><b>Entry point:</b> <code class="mono">docs/examples/&lt;stack&gt;-producer-recipe.md</code> and <code class="mono">/iceberg-profile-setup</code>.</p>
+        </div>
+
+        <div class="card accent-violet accent-left">
+          <span class="pill arch" style="margin-bottom: 16px;"><span class="pip"></span>Regulated orgs</span>
+          <h3 style="font-size: 22px;">Finance, healthcare, government</h3>
+          <ul class="list tight mt-4">
+            <li>Strict multi-region isolation mandates</li>
+            <li>No cross-region S3, no MRAPs</li>
+            <li>Need per-region Glue catalogs, auditable failover</li>
+          </ul>
+          <div class="divider" style="margin: 18px 0 14px;"></div>
+          <p class="small"><b>Entry point:</b> the <code class="mono">aws-glue-datamesh-strict</code> preset and the <code class="mono">/iceberg-multi-region</code> skill.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 6. SCOPE ===================== -->
+  <section class="slide" data-title="Scope v1.0">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill arch"><span class="pip"></span>Architect</span>
+        <span class="pill mgmt"><span class="pip"></span>Leadership</span>
+      </div>
+      <div class="eyebrow">Scope &middot; v1.0</div>
+      <h2>What ships today, and what stays out (on purpose).</h2>
+
+      <div class="grid cols-2 mt-10">
+        <div class="card accent-emerald accent-left">
+          <h3 class="accent-emerald">In scope</h3>
+          <ul class="list checked mt-4">
+            <li><b>Catalog:</b> AWS Glue Data Catalog</li>
+            <li><b>Storage:</b> Amazon S3</li>
+            <li><b>Format:</b> Iceberg format-version 2 (row-level deletes, merge-on-read)</li>
+            <li><b>Stacks:</b> Glue PySpark, EMR PySpark, ECS Python, Lambda Python, ECS Java, Lambda Java</li>
+            <li><b>Multi-region:</b> S3 Cross-Region Replication + metadata repointing + per-region Glue registration</li>
+            <li><b>Tenancy:</b> per-producer profiles with preset inheritance</li>
+            <li><b>Docs:</b> admin guide, user guide, stack-specific recipes</li>
+          </ul>
+        </div>
+
+        <div class="card accent-left" style="border-color: rgba(251,113,133,0.3);">
+          <h3 style="color: var(--rose);">Out of scope (v1.0)</h3>
+          <ul class="list x mt-4">
+            <li><b>Clouds:</b> Azure, GCP, on-premises</li>
+            <li><b>Catalogs:</b> Unity Catalog, Polaris, Nessie, Hive Metastore</li>
+            <li><b>Multi-Region Access Points</b> &mdash; intentionally disallowed</li>
+            <li><b>Cross-region S3 reads at runtime</b> &mdash; intentionally disallowed</li>
+            <li><b>Transactional cross-region writes</b> (eventual consistency only via CRR)</li>
+            <li><b>SaaS runtime</b> &mdash; DMIceberg is a workflow package, not a service</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="mt-6">
+        <p class="small text-faint"><b>Why these exclusions are deliberate:</b> the customers we&rsquo;re optimizing for are regulated shops who would reject MRAPs and cross-region S3 in a security review anyway. Every exclusion here simplifies compliance review for the producer.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 7. ARCHITECTURE ===================== -->
+  <section class="slide" data-title="Architecture">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill arch"><span class="pip"></span>Architect</span>
+        <span class="pill dev"><span class="pip"></span>Developer</span>
+      </div>
+      <div class="eyebrow">Architecture</div>
+      <h2>Four layers. Output lands in your AWS account, nowhere else.</h2>
+
+      <div class="mt-8" style="display: grid; grid-template-columns: 1.1fr 1fr; gap: 28px; align-items: stretch;">
+        <!-- Layered SVG -->
+        <div class="card" style="padding: 18px;">
+          <svg viewBox="0 0 560 420" width="100%" height="auto" role="img" aria-label="DMIceberg architecture layers">
+            <defs>
+              <linearGradient id="g1" x1="0" x2="1" y1="0" y2="0">
+                <stop offset="0" stop-color="#22d3ee" stop-opacity="0.25"/>
+                <stop offset="1" stop-color="#22d3ee" stop-opacity="0.05"/>
+              </linearGradient>
+              <linearGradient id="g2" x1="0" x2="1" y1="0" y2="0">
+                <stop offset="0" stop-color="#a78bfa" stop-opacity="0.25"/>
+                <stop offset="1" stop-color="#a78bfa" stop-opacity="0.05"/>
+              </linearGradient>
+              <linearGradient id="g3" x1="0" x2="1" y1="0" y2="0">
+                <stop offset="0" stop-color="#34d399" stop-opacity="0.22"/>
+                <stop offset="1" stop-color="#34d399" stop-opacity="0.04"/>
+              </linearGradient>
+              <linearGradient id="g4" x1="0" x2="1" y1="0" y2="0">
+                <stop offset="0" stop-color="#fbbf24" stop-opacity="0.2"/>
+                <stop offset="1" stop-color="#fbbf24" stop-opacity="0.04"/>
+              </linearGradient>
+            </defs>
+            <g font-family="ui-monospace, JetBrains Mono, Menlo, monospace" font-size="12" fill="#e6edf7">
+              <!-- Layer 1 -->
+              <rect x="20" y="20" width="520" height="80" rx="10" fill="url(#g1)" stroke="#22d3ee" stroke-opacity="0.45"/>
+              <text x="36" y="46" font-size="11" fill="#22d3ee" letter-spacing="2">LAYER 1 &middot; USER-FACING</text>
+              <text x="36" y="72" font-size="16" fill="#e6edf7" font-weight="700">Slash commands &mdash; /iceberg-*</text>
+              <text x="36" y="92" font-size="12" fill="#9aa7bd">profile-setup &middot; onboard &middot; ddl &middot; data &middot; migrate &middot; maintenance &middot; multi-region &middot; pipeline &middot; info</text>
+
+              <!-- Arrow -->
+              <path d="M 280 100 L 280 118" stroke="#9aa7bd" stroke-width="1.2"/>
+              <path d="M 275 115 L 280 122 L 285 115" fill="none" stroke="#9aa7bd" stroke-width="1.2"/>
+
+              <!-- Layer 2 -->
+              <rect x="20" y="124" width="520" height="70" rx="10" fill="url(#g2)" stroke="#a78bfa" stroke-opacity="0.45"/>
+              <text x="36" y="150" font-size="11" fill="#a78bfa" letter-spacing="2">LAYER 2 &middot; COORDINATION</text>
+              <text x="36" y="174" font-size="16" fill="#e6edf7" font-weight="700">iceberg-orchestrator (Opus)</text>
+              <text x="36" y="188" font-size="12" fill="#9aa7bd">reads profile &middot; plans artifacts &middot; seeks approval &middot; delegates &middot; aggregates</text>
+
+              <path d="M 280 194 L 280 214" stroke="#9aa7bd" stroke-width="1.2"/>
+              <path d="M 275 211 L 280 218 L 285 211" fill="none" stroke="#9aa7bd" stroke-width="1.2"/>
+
+              <!-- Layer 3 -->
+              <rect x="20" y="220" width="520" height="90" rx="10" fill="url(#g3)" stroke="#34d399" stroke-opacity="0.45"/>
+              <text x="36" y="246" font-size="11" fill="#34d399" letter-spacing="2">LAYER 3 &middot; SPECIALISTS</text>
+              <text x="36" y="270" font-size="15" fill="#e6edf7" font-weight="700">architect &middot; code-generator &middot; validator &middot; multi-region-planner</text>
+              <text x="36" y="290" font-size="12" fill="#9aa7bd">codebase analysis  &middot;  per-stack codegen  &middot;  static validation  &middot;  CRR + repointing</text>
+              <text x="36" y="304" font-size="11" fill="#6b7890">spawned in parallel where independent (e.g. codegen + multi-region planning)</text>
+
+              <path d="M 280 310 L 280 330" stroke="#9aa7bd" stroke-width="1.2"/>
+              <path d="M 275 327 L 280 334 L 285 327" fill="none" stroke="#9aa7bd" stroke-width="1.2"/>
+
+              <!-- Layer 4 -->
+              <rect x="20" y="336" width="520" height="70" rx="10" fill="url(#g4)" stroke="#fbbf24" stroke-opacity="0.45"/>
+              <text x="36" y="362" font-size="11" fill="#fbbf24" letter-spacing="2">LAYER 4 &middot; YOUR AWS ACCOUNT</text>
+              <text x="36" y="386" font-size="15" fill="#e6edf7" font-weight="700">Glue Data Catalog &middot; S3 &middot; IAM &middot; CloudWatch &middot; EventBridge</text>
+              <text x="36" y="400" font-size="12" fill="#9aa7bd">artifacts deployed by the producer&rsquo;s CI/CD &mdash; DMIceberg itself never touches prod</text>
+            </g>
+          </svg>
+        </div>
+
+        <!-- Explanations -->
+        <div>
+          <div class="card accent-cyan accent-left mb-4">
+            <h3>Layer 1 &mdash; user-facing</h3>
+            <p class="small mt-4">Slash commands the producer or platform team actually invoke. Each gathers inputs and delegates down.</p>
+          </div>
+          <div class="card accent-violet accent-left mb-4">
+            <h3>Layer 2 &mdash; coordination</h3>
+            <p class="small mt-4">The orchestrator reads the profile, drafts a plan, and asks for user approval before generating anything. Parallelizes independent work.</p>
+          </div>
+          <div class="card accent-emerald accent-left mb-4">
+            <h3>Layer 3 &mdash; specialists</h3>
+            <p class="small mt-4">Deep domain agents: architecture analysis, per-stack codegen, static validation, multi-region planning. Each receives full context; none retains memory across invocations.</p>
+          </div>
+          <div class="card accent-amber accent-left">
+            <h3>Layer 4 &mdash; your AWS</h3>
+            <p class="small mt-4">The platform deposits artifacts in your repo. Deployment is owned by the producer&rsquo;s CI/CD. DMIceberg has no runtime presence in production.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 8. MULTI-REGION ===================== -->
+  <section class="slide" data-title="Multi-Region">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill arch"><span class="pip"></span>Architect</span>
+        <span class="pill mgmt"><span class="pip"></span>Leadership</span>
+      </div>
+      <div class="eyebrow">Multi-region &middot; the differentiator</div>
+      <h2>DR resilience without cross-region S3 or MRAPs.</h2>
+      <p class="lede mt-4" style="max-width: 1000px;">
+        Most Iceberg multi-region guidance assumes you can read S3 across regions or use MRAPs. Regulated customers often can&rsquo;t. Our answer: CRR + metadata repointing + per-region catalogs.
+      </p>
+
+      <div class="mr mt-10">
+        <div class="region-card">
+          <div class="head">
+            <span class="r">Primary</span>
+            <h3 style="margin-left: 4px;">us-east-1</h3>
+          </div>
+          <div class="layer">
+            <div class="ic">S3</div>
+            <div class="ltxt"><h4>Warehouse bucket</h4><p>Data + metadata written locally by the producer&rsquo;s pipeline.</p></div>
+          </div>
+          <div class="layer">
+            <div class="ic">G</div>
+            <div class="ltxt"><h4>Glue Data Catalog</h4><p>Table registered with primary-region <code class="mono">metadata_location</code>.</p></div>
+          </div>
+          <div class="layer">
+            <div class="ic">&lambda;</div>
+            <div class="ltxt"><h4>Ingestion job</h4><p>Writes using <code class="mono">glue.region</code> + <code class="mono">s3.region</code> pinned locally.</p></div>
+          </div>
+        </div>
+
+        <div class="mr-link">
+          <div class="label">S3 Cross-Region<br/>Replication</div>
+          <svg width="100" height="40" viewBox="0 0 100 40" fill="none">
+            <defs>
+              <linearGradient id="arr" x1="0" x2="1" y1="0" y2="0">
+                <stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#a78bfa"/>
+              </linearGradient>
+            </defs>
+            <path d="M5 20h82M80 10l10 10-10 10" stroke="url(#arr)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>
+          <div class="label text-faint">object-level,<br/>eventually consistent</div>
+          <svg width="100" height="28" viewBox="0 0 100 28" fill="none" style="margin-top: 18px;">
+            <path d="M92 14H8M18 6L8 14l10 10" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>
+          <div class="label" style="color: var(--amber);">metadata repointing<br/>rewrites S3 paths</div>
+        </div>
+
+        <div class="region-card dr">
+          <div class="head">
+            <span class="r">DR</span>
+            <h3 style="margin-left: 4px;">us-west-2</h3>
+          </div>
+          <div class="layer">
+            <div class="ic">S3</div>
+            <div class="ltxt"><h4>Replicated bucket</h4><p>Same keyspace, local copies of data and source-region metadata.</p></div>
+          </div>
+          <div class="layer">
+            <div class="ic">&lambda;</div>
+            <div class="ltxt"><h4>Repointing utility</h4><p>Rewrites <code class="mono">metadata.json</code>, manifest-list, and manifest Avro. Preserves Avro file-level metadata (<code class="mono">iceberg.schema</code>, <code class="mono">content</code>, <code class="mono">partition-spec-id</code>).</p></div>
+          </div>
+          <div class="layer">
+            <div class="ic">G</div>
+            <div class="ltxt"><h4>Glue Data Catalog</h4><p>Table registered in-region, pointing at the repointed metadata &mdash; queryable locally with zero cross-region I/O.</p></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid cols-4 mt-10">
+        <div class="card"><h3 class="accent">Zero cross-region I/O</h3><p class="small mt-4">At runtime, every read and write is in-region. CRR is the only cross-region path, and it&rsquo;s asynchronous object copy.</p></div>
+        <div class="card"><h3 class="accent-violet">No MRAPs</h3><p class="small mt-4">Multi-Region Access Points are explicitly not used. Each region has its own bucket.</p></div>
+        <div class="card"><h3 class="accent-emerald">Per-region queryable</h3><p class="small mt-4">Athena, Glue, EMR in the DR region hit the local catalog and local bucket.</p></div>
+        <div class="card"><h3 style="color: var(--amber);">Auditable failover</h3><p class="small mt-4">Failover runbook generated alongside the code. No runtime surprises.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 9. TECH STACKS ===================== -->
+  <section class="slide" data-title="Tech stacks">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill dev"><span class="pip"></span>Developer</span>
+      </div>
+      <div class="eyebrow">Tech stack coverage</div>
+      <h2>Six producer stacks. First-class support, same quality bar.</h2>
+
+      <div class="grid cols-3 mt-8">
+        <div class="card accent-cyan accent-left">
+          <h3>Glue PySpark</h3>
+          <p class="small mt-4"><b>Runtime:</b> AWS Glue 5.0 / 5.1<br/><b>Spark:</b> 3.5.4 / 3.5.6<br/><b>Iceberg:</b> 1.7 / 1.10</p>
+          <pre class="code mt-4" style="font-size: 11.5px;"><span class="c"># job parameter</span>
+<span class="f">--datalake-formats</span> <span class="s">iceberg</span>
+<span class="f">spark.sql.catalog.glue_catalog</span>=<span class="n">SparkCatalog</span></pre>
+        </div>
+        <div class="card accent-cyan accent-left">
+          <h3>EMR PySpark</h3>
+          <p class="small mt-4"><b>Runtime:</b> EMR 6.5+ / 7.x<br/><b>Scala:</b> 2.12 or 2.13<br/><b>Iceberg:</b> <code class="mono">iceberg-spark-runtime-3.5_2.12:1.10.1</code></p>
+          <pre class="code mt-4" style="font-size: 11.5px;"><span class="c"># spark-submit</span>
+<span class="f">--packages</span> org.apache.iceberg:<span class="n">iceberg-spark-runtime</span>-3.5_2.12:1.10.1</pre>
+        </div>
+        <div class="card accent-emerald accent-left">
+          <h3>ECS Python</h3>
+          <p class="small mt-4"><b>Runtime:</b> Fargate long-running<br/><b>Library:</b> <code class="mono">pyiceberg[glue,s3fs,pyarrow]&ge;0.8</code></p>
+          <pre class="code mt-4" style="font-size: 11.5px;"><span class="k">from</span> <span class="n">pyiceberg.catalog.glue</span> <span class="k">import</span> <span class="n">GlueCatalog</span>
+<span class="n">catalog</span> = <span class="n">GlueCatalog</span>(<span class="s">"c"</span>, <span class="f">**</span>{
+  <span class="s">"glue.region"</span>: <span class="s">"us-east-1"</span>,
+  <span class="s">"s3.region"</span>:   <span class="s">"us-east-1"</span>})</pre>
+        </div>
+        <div class="card accent-emerald accent-left">
+          <h3>Lambda Python</h3>
+          <p class="small mt-4"><b>Runtime:</b> Lambda &le; 15 min<br/><b>Pattern:</b> reserved concurrency = 1 (single-writer)</p>
+          <pre class="code mt-4" style="font-size: 11.5px;"><span class="c"># avoids CommitFailedException retries</span>
+<span class="n">reserved_concurrent_executions</span> = <span class="n">1</span></pre>
+        </div>
+        <div class="card accent-violet accent-left">
+          <h3>ECS Java</h3>
+          <p class="small mt-4"><b>Runtime:</b> JVM long-running<br/><b>Library:</b> <code class="mono">iceberg-core</code> + <code class="mono">iceberg-aws</code> 1.10</p>
+          <pre class="code mt-4" style="font-size: 11.5px;"><span class="n">catalog</span>.<span class="f">initialize</span>(<span class="s">"c"</span>, <span class="n">ImmutableMap</span>.<span class="f">of</span>(
+  <span class="s">"glue.region"</span>, region,
+  <span class="s">"s3.region"</span>,   region,
+  <span class="s">"io-impl"</span>,     <span class="s">"S3FileIO"</span>));</pre>
+        </div>
+        <div class="card accent-violet accent-left">
+          <h3>Lambda Java</h3>
+          <p class="small mt-4"><b>Runtime:</b> Lambda cold-start tuned<br/><b>Library:</b> <code class="mono">iceberg-core</code> + <code class="mono">iceberg-aws</code> 1.10</p>
+          <pre class="code mt-4" style="font-size: 11.5px;"><span class="c">// SnapStart + static catalog init</span>
+<span class="c">// keeps p99 under 2s</span></pre>
+        </div>
+      </div>
+
+      <div class="mt-8 text-faint small">
+        All six stacks share the same Glue Catalog, same warehouse convention (<code class="mono">s3://&lt;bucket&gt;/warehouse/</code>), and the same validator gates.
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 10. SKILLS CATALOG ===================== -->
+  <section class="slide" data-title="Skills">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill dev"><span class="pip"></span>Developer</span>
+        <span class="pill arch"><span class="pip"></span>Architect</span>
+      </div>
+      <div class="eyebrow">Skills catalog</div>
+      <h2>Nine slash commands. Producers call the ones they need.</h2>
+
+      <div class="card mt-8" style="padding: 6px;">
+        <table class="t">
+          <thead><tr><th style="width: 220px;">Command</th><th>Purpose</th><th style="width: 180px;">Primary user</th></tr></thead>
+          <tbody>
+            <tr><td><code>/iceberg-profile-setup</code></td><td>One-time capture of producer conventions into <code>profiles/&lt;name&gt;.yaml</code>. Run before anything else.</td><td>Platform lead</td></tr>
+            <tr><td><code>/iceberg-onboard</code></td><td>End-to-end onboarding. Orchestrator reads the profile, plans artifacts, delegates, validates, delivers.</td><td>Platform + producer</td></tr>
+            <tr><td><code>/iceberg-ddl</code></td><td>CREATE / ALTER / DROP tables with schema and partition evolution. Type mapping included.</td><td>Developer</td></tr>
+            <tr><td><code>/iceberg-data</code></td><td>INSERT, MERGE, DELETE, OVERWRITE. Batch and streaming patterns. Safe Java writer pattern built-in.</td><td>Developer</td></tr>
+            <tr><td><code>/iceberg-migrate</code></td><td>Parquet &rarr; Iceberg via four strategies: <code>migrate</code>, CTAS, <code>snapshot</code>, <code>add_files</code>.</td><td>Developer</td></tr>
+            <tr><td><code>/iceberg-maintenance</code></td><td>Compaction, snapshot expiration (epoch-ms API), orphan cleanup. Glue <code>Job.init/commit</code> correct.</td><td>Developer</td></tr>
+            <tr><td><code>/iceberg-multi-region</code></td><td>S3 CRR + metadata repointing utility + per-region Glue registration + failover runbook.</td><td>Architect</td></tr>
+            <tr><td><code>/iceberg-pipeline</code></td><td>Greenfield end-to-end pipeline. IAM scoped to the producer&rsquo;s database ARN, not <code>"*"</code>.</td><td>Developer</td></tr>
+            <tr><td><code>/iceberg-info</code></td><td>Metadata inspection: schema, snapshots, partitions, file health, delete-file ratio.</td><td>Developer</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 11. SUBAGENTS ===================== -->
+  <section class="slide" data-title="Subagents">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill arch"><span class="pip"></span>Architect</span>
+        <span class="pill dev"><span class="pip"></span>Developer</span>
+      </div>
+      <div class="eyebrow">Specialized subagents</div>
+      <h2>Five agents. Each with a narrow mandate and the right model tier.</h2>
+
+      <div class="grid cols-3 mt-8">
+        <div class="card accent-violet accent-left">
+          <div class="row space-between" style="margin-bottom: 8px;">
+            <h3>iceberg-orchestrator</h3>
+            <span class="badge violet">Opus</span>
+          </div>
+          <p class="small">End-to-end coordinator for <code>/iceberg-onboard</code>. Reads profile, plans artifacts, seeks user approval, delegates, aggregates output into a deployment package. Parallelizes independent work.</p>
+        </div>
+        <div class="card accent-violet accent-left">
+          <div class="row space-between" style="margin-bottom: 8px;">
+            <h3>iceberg-architect</h3>
+            <span class="badge violet">Opus</span>
+          </div>
+          <p class="small">Reads the producer&rsquo;s current code and infrastructure. Returns migration strategy, risk matrix, downstream-consumer compatibility assessment. Never touches production directly.</p>
+        </div>
+        <div class="card accent-emerald accent-left">
+          <div class="row space-between" style="margin-bottom: 8px;">
+            <h3>iceberg-code-generator</h3>
+            <span class="badge emerald">Sonnet</span>
+          </div>
+          <p class="small">Generates per-stack production code. Knows PySpark, PyIceberg, and Java idioms. Ships with safe Java writer pattern, Glue <code>Job.init/commit</code> lifecycle, pinned region config.</p>
+        </div>
+        <div class="card accent-emerald accent-left">
+          <div class="row space-between" style="margin-bottom: 8px;">
+            <h3>iceberg-validator</h3>
+            <span class="badge emerald">Sonnet</span>
+          </div>
+          <p class="small">Read-only static checks: schema, Spark config completeness, PyIceberg canonical region keys, IAM scope, Avro file-level metadata preservation in multi-region output.</p>
+        </div>
+        <div class="card accent-emerald accent-left">
+          <div class="row space-between" style="margin-bottom: 8px;">
+            <h3>iceberg-multi-region-planner</h3>
+            <span class="badge emerald">Sonnet</span>
+          </div>
+          <p class="small">S3 CRR Terraform, metadata repointing utility (Python or Java), sync automation via EventBridge + Lambda, monitoring, and a failover runbook &mdash; all deployed to the producer&rsquo;s account.</p>
+        </div>
+        <div class="card accent-left" style="border-color: rgba(148,163,184,0.25);">
+          <h3 style="color: var(--text);">Isolation model</h3>
+          <p class="small mt-4">Every agent starts with zero prior context. The orchestrator passes full context on each spawn. No agent retains memory of prior runs.</p>
+          <p class="small mt-4 text-faint">Why this matters: reproducibility and reviewability. You can replay any phase from the captured inputs.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 12. PRODUCER FLOW ===================== -->
+  <section class="slide" data-title="Producer flow">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill dev"><span class="pip"></span>Developer</span>
+      </div>
+      <div class="eyebrow">What a producer actually sees</div>
+      <h2>Five interactions from &ldquo;no Iceberg&rdquo; to &ldquo;deployment-ready package.&rdquo;</h2>
+
+      <div class="mt-8" style="display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: start;">
+        <div>
+          <div class="card mb-4">
+            <div class="row" style="margin-bottom: 8px;"><span class="badge">1</span><h3 style="margin: 0;">Capture conventions once</h3></div>
+            <p class="small">Run <code>/iceberg-profile-setup</code>. Answers live in <code>profiles/&lt;name&gt;.yaml</code> under preset inheritance.</p>
+          </div>
+          <div class="card mb-4">
+            <div class="row" style="margin-bottom: 8px;"><span class="badge">2</span><h3 style="margin: 0;">Start onboarding</h3></div>
+            <p class="small">Run <code>/iceberg-onboard</code>. The orchestrator reads your profile and asks only for what&rsquo;s missing: schema, partitioning, volume, source.</p>
+          </div>
+          <div class="card mb-4">
+            <div class="row" style="margin-bottom: 8px;"><span class="badge">3</span><h3 style="margin: 0;">Approve the plan</h3></div>
+            <p class="small">Orchestrator presents an artifact checklist: DDL, ingestion, migration, maintenance, IAM, multi-region. You adjust scope before anything is generated.</p>
+          </div>
+          <div class="card mb-4">
+            <div class="row" style="margin-bottom: 8px;"><span class="badge">4</span><h3 style="margin: 0;">Parallel generation</h3></div>
+            <p class="small">Code-generator and multi-region-planner run concurrently. Validator sweeps the output. Any CRITICAL or HIGH finding blocks delivery until fixed.</p>
+          </div>
+          <div class="card">
+            <div class="row" style="margin-bottom: 8px;"><span class="badge">5</span><h3 style="margin: 0;">Receive the package</h3></div>
+            <p class="small">Ordered deployment sequence, per-artifact code, validation results, post-deploy checklist, rollback plan. Everything as reviewable text.</p>
+          </div>
+        </div>
+
+        <div>
+          <div class="card accent-emerald accent-left">
+            <h3 class="accent-emerald">Sample deliverable structure</h3>
+            <pre class="code mt-4" style="font-size: 12px;"><span class="c"># Iceberg Onboarding Package: brok</span>
+
+<span class="k">Summary</span>
+  type:         existing (Parquet)
+  stack:        glue_pyspark
+  strategy:    <span class="s">add_files</span>
+  multi-region: yes (us-east-1 &rarr; us-west-2)
+
+<span class="k">Deployment sequence</span>
+  1. IAM roles / Terraform
+  2. Create Iceberg table (DDL)
+  3. Run migration (add_files)
+  4. Deploy modified pipeline
+  5. Deploy maintenance job + EventBridge
+  6. Deploy multi-region infra
+  7. Run validation
+
+<span class="k">Artifacts</span>
+  &middot; table_ddl.sql
+  &middot; migrate_add_files.py
+  &middot; pipeline.py          <span class="c"># minimal diff vs current</span>
+  &middot; maintenance.py
+  &middot; iam.tf
+  &middot; multi_region/
+     &middot; crr.tf
+     &middot; repoint.py
+     &middot; sync.tf
+     &middot; failover.md
+
+<span class="k">Validation results</span>
+  CRITICAL: 0
+  HIGH:     0
+  MEDIUM:   2 (recommendations)</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 13. PROFILE SYSTEM ===================== -->
+  <section class="slide" data-title="Profiles">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill arch"><span class="pip"></span>Architect</span>
+        <span class="pill dev"><span class="pip"></span>Developer</span>
+      </div>
+      <div class="eyebrow">Profile-first tenancy</div>
+      <h2>One YAML per producer. Every skill reads from it.</h2>
+
+      <div style="display: grid; grid-template-columns: 1.1fr 1fr; gap: 28px; margin-top: 32px;">
+        <div class="card" style="padding: 0; overflow: hidden;">
+          <div style="padding: 12px 18px; border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 12px; color: var(--text-faint); display: flex; justify-content: space-between;">
+            <span>profiles/datamesh-producer-brok.yaml</span>
+            <span class="accent">strict preset</span>
+          </div>
+          <pre class="code" style="border: 0; border-radius: 0;"><span class="n">producer_name</span>: <span class="s">datamesh-producer-brok</span>
+<span class="n">extends</span>: <span class="s">aws-glue-datamesh-strict</span>   <span class="c"># no cross-region S3, no MRAP</span>
+
+<span class="n">primary_region</span>: <span class="s">us-east-1</span>
+<span class="n">dr_region</span>:      <span class="s">us-west-2</span>
+<span class="n">warehouse_bucket_primary</span>: <span class="s">brok-confirmed-us-east-1</span>
+<span class="n">warehouse_bucket_dr</span>:      <span class="s">brok-confirmed-us-west-2</span>
+<span class="n">database</span>:     <span class="s">brok_confirmed</span>
+<span class="n">tech_stack</span>:   <span class="s">glue_pyspark</span>
+<span class="n">orchestrator</span>: <span class="s">step_functions</span>
+
+<span class="c"># Override only what differs from the preset.</span>
+<span class="c"># Most profiles stay under 15 lines.</span></pre>
+        </div>
+
+        <div>
+          <div class="card accent-cyan accent-left mb-4">
+            <h3>Presets encode org policy</h3>
+            <p class="small mt-4"><code>aws-glue-datamesh-strict</code> rejects cross-region S3, disables MRAPs, and requires per-region Glue catalogs. <code>aws-glue-central-lake</code> is permissive. Orgs can ship their own.</p>
+          </div>
+          <div class="card accent-violet accent-left mb-4">
+            <h3>Every skill is profile-aware</h3>
+            <p class="small mt-4">Running <code>/iceberg-ddl</code> against a profile means we already know region, bucket, database, tech stack &mdash; no re-asking.</p>
+          </div>
+          <div class="card accent-emerald accent-left">
+            <h3>Diff-friendly</h3>
+            <p class="small mt-4">Profiles live in the producer&rsquo;s repo. Changes go through PR review. Platform-wide preset upgrades land by bumping one field.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 14. RELEASE READINESS ===================== -->
+  <section class="slide" data-title="Release readiness">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill mgmt"><span class="pip"></span>Leadership</span>
+        <span class="pill arch"><span class="pip"></span>Architect</span>
+        <span class="pill dev"><span class="pip"></span>Developer</span>
+      </div>
+      <div class="eyebrow">Correctness &amp; release readiness</div>
+      <h2>What we hardened before tagging v1.0.0.</h2>
+      <p class="lede mt-4" style="max-width: 1000px;">A full review pass ran across every skill, subagent, and doc. The table below is the short list of correctness issues the review caught and the shipped fix. All are documented in <code class="mono">CHANGELOG.md</code>.</p>
+
+      <div class="card mt-8" style="padding: 6px;">
+        <table class="t">
+          <thead><tr><th style="width: 220px;">Category</th><th>Pre-review state</th><th>Shipped state</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><b>PyIceberg</b> snapshot expiry</td>
+              <td>Called nonexistent <code>tx.expire_snapshots_older_than(datetime)</code></td>
+              <td>Canonical <code>expire_snapshots().expire_older_than(epoch_ms).commit()</code></td>
+            </tr>
+            <tr>
+              <td><b>PyIceberg</b> name mapping</td>
+              <td><code>model_dump()</code> wrapped in <code>json.dumps</code> (doesn&rsquo;t serialize)</td>
+              <td><code>create_mapping_from_schema</code> + <code>NameMapping.model_dump_json()</code></td>
+            </tr>
+            <tr>
+              <td><b>Glue</b> job lifecycle</td>
+              <td><code>spark.stop()</code> &mdash; bookmark advanced even on failure</td>
+              <td><code>Job.init</code> / <code>job.commit()</code> on the success path only</td>
+            </tr>
+            <tr>
+              <td><b>Java</b> writer</td>
+              <td><code>toDataFile()</code> in <code>finally</code> (post-close corruption)</td>
+              <td>Success-path only, orphan cleanup in <code>catch</code></td>
+            </tr>
+            <tr>
+              <td><b>Java</b> catalog region</td>
+              <td>Ambient AWS SDK region resolution (cross-region risk)</td>
+              <td><code>glue.region</code> + <code>s3.region</code> required</td>
+            </tr>
+            <tr>
+              <td><b>PySpark</b> type checks</td>
+              <td><code>dtype == "long"</code> string comparison (never matched)</td>
+              <td><code>isinstance(dtype, (LongType, ...))</code></td>
+            </tr>
+            <tr>
+              <td><b>IAM</b> Glue scope</td>
+              <td><code>Resource = "*"</code></td>
+              <td>Scoped to <code>catalog</code> + <code>database/&lt;db&gt;</code> + <code>table/&lt;db&gt;/*</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="row mt-6 space-between">
+        <div class="mono small text-faint">All 7 blockers &rarr; resolved. All HIGH-severity findings &rarr; resolved. Medium findings documented in roadmap.</div>
+        <span class="badge emerald">release-ready</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 15. ROADMAP ===================== -->
+  <section class="slide" data-title="Roadmap">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill mgmt"><span class="pip"></span>Leadership</span>
+        <span class="pill arch"><span class="pip"></span>Architect</span>
+      </div>
+      <div class="eyebrow">Roadmap</div>
+      <h2>Where v1 holds the line, and where v1.1 / v1.2 / v2 take us next.</h2>
+
+      <div class="grid cols-3 mt-10">
+        <div class="card accent-cyan accent-left">
+          <span class="badge">v1.1 &middot; near-term</span>
+          <h3 class="mt-4">Profile-aware skills</h3>
+          <ul class="list tight mt-4">
+            <li>All skills read <code>profiles/&lt;name&gt;.yaml</code> directly &mdash; no re-asking bucket/database</li>
+            <li>Ship <code>.github/copilot-instructions.md</code> for GitHub Copilot tenants</li>
+            <li>CloudWatch dashboards bundled with <code>/iceberg-pipeline</code></li>
+            <li>Second-pass hardening on <code>/iceberg-info</code> health diagnostics</li>
+          </ul>
+        </div>
+        <div class="card accent-violet accent-left">
+          <span class="badge violet">v1.2 &middot; quarter+</span>
+          <h3 class="mt-4">Format v3 &amp; materialized views</h3>
+          <ul class="list tight mt-4">
+            <li>Format-version 3 migration helpers (deletion vectors, row lineage)</li>
+            <li>Iceberg materialized view support (Glue 5.1)</li>
+            <li>Snowflake Iceberg external-catalog integration</li>
+            <li>Pluggable validator rulepacks for org-specific policies</li>
+          </ul>
+        </div>
+        <div class="card accent-emerald accent-left">
+          <span class="badge emerald">v2.0 &middot; year+</span>
+          <h3 class="mt-4">Multi-cloud &amp; multi-catalog</h3>
+          <ul class="list tight mt-4">
+            <li>Additional catalogs: Unity, Polaris, Nessie (behind capability flags)</li>
+            <li>Azure + GCP stacks (requires abstracting FileIO and catalog)</li>
+            <li>Cross-organization data sharing via signed Iceberg snapshots</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="mt-10 text-faint small">Roadmap is intentionally conservative. We&rsquo;d rather ship one catalog perfectly than four partially.</div>
+    </div>
+  </section>
+
+  <!-- ===================== 16. NEXT STEPS ===================== -->
+  <section class="slide" data-title="Next steps">
+    <div class="slide-inner">
+      <div class="pill-row">
+        <span class="pill all"><span class="pip"></span>All audiences</span>
+      </div>
+      <div class="eyebrow">Next steps</div>
+      <h2>One action for each audience. Pick yours.</h2>
+
+      <div class="grid cols-3 mt-10">
+        <div class="card accent-amber accent-left">
+          <span class="pill mgmt" style="margin-bottom: 14px;"><span class="pip"></span>Leadership</span>
+          <h3>Approve &amp; sponsor a pilot</h3>
+          <ul class="list tight mt-4">
+            <li>Approve Iceberg as the mesh-wide table format</li>
+            <li>Sponsor a 2-producer pilot in the next quarter</li>
+            <li>Designate the platform-team owner for preset policy</li>
+          </ul>
+          <div class="divider" style="margin: 18px 0 14px;"></div>
+          <p class="small mono text-faint">Read: <code>README.md</code> &middot; <code>CHANGELOG.md</code></p>
+        </div>
+
+        <div class="card accent-violet accent-left">
+          <span class="pill arch" style="margin-bottom: 14px;"><span class="pip"></span>Architect</span>
+          <h3>Choose &amp; customize a preset</h3>
+          <ul class="list tight mt-4">
+            <li>Review <code>docs/admin-guide.md</code></li>
+            <li>Pick <code>aws-glue-datamesh-strict</code> or <code>aws-glue-central-lake</code> as the org baseline</li>
+            <li>Define gating and wave-rollout policy</li>
+          </ul>
+          <div class="divider" style="margin: 18px 0 14px;"></div>
+          <p class="small mono text-faint">Read: <code>profiles/schema.md</code> &middot; <code>profiles/presets/*.yaml</code></p>
+        </div>
+
+        <div class="card accent-emerald accent-left">
+          <span class="pill dev" style="margin-bottom: 14px;"><span class="pip"></span>Developer</span>
+          <h3>Onboard your pipeline</h3>
+          <ul class="list tight mt-4">
+            <li>Read the recipe for your stack</li>
+            <li>Run <code>/iceberg-profile-setup</code> in your repo</li>
+            <li>Run <code>/iceberg-onboard</code> and review the deployment package</li>
+          </ul>
+          <div class="divider" style="margin: 18px 0 14px;"></div>
+          <p class="small mono text-faint">Read: <code>docs/examples/&lt;stack&gt;-producer-recipe.md</code></p>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="row space-between">
+        <div>
+          <div class="mono small text-faint">Repository</div>
+          <div style="font-size: 22px; font-weight: 700;" class="accent">github.com/&lt;org&gt;/DMIceberg</div>
+        </div>
+        <div style="text-align: right;">
+          <div class="mono small text-faint">Release</div>
+          <div style="font-size: 22px; font-weight: 700;">v1.0.0 &middot; Apache-2.0</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div class="bottombar">
+  <div class="dotnav" id="dotnav"></div>
+</div>
+
+<div class="navhint">
+  <kbd>&larr;</kbd> <kbd>&rarr;</kbd> navigate &middot; <kbd>Home</kbd> / <kbd>End</kbd> first/last &middot; <kbd>F</kbd> fullscreen
+</div>
+
+<script>
+(function () {
+  var slides   = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var dotnav   = document.getElementById('dotnav');
+  var progress = document.getElementById('progress');
+  var scCur    = document.getElementById('sc-cur');
+  var scTot    = document.getElementById('sc-tot');
+  var scTitle  = document.getElementById('sc-title');
+
+  var total = slides.length;
+  scTot.textContent = String(total).padStart(2, '0');
+
+  var dots = [];
+  slides.forEach(function (_, i) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.title = 'Slide ' + (i + 1);
+    b.addEventListener('click', function () { go(i); });
+    dotnav.appendChild(b);
+    dots.push(b);
+  });
+
+  var idx = 0;
+  function go(next) {
+    idx = Math.max(0, Math.min(total - 1, next));
+    slides.forEach(function (s, i) { s.classList.toggle('active', i === idx); });
+    dots.forEach(function (d, i)   { d.classList.toggle('active', i === idx); });
+    scCur.textContent = String(idx + 1).padStart(2, '0');
+    if (scTitle) { scTitle.textContent = slides[idx].getAttribute('data-title') || ''; }
+    progress.style.transform = 'scaleX(' + ((idx + 1) / total) + ')';
+    if (location.hash !== '#s' + (idx + 1)) {
+      history.replaceState(null, '', '#s' + (idx + 1));
+    }
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    switch (e.key) {
+      case 'ArrowRight':
+      case 'PageDown':
+      case ' ':
+        e.preventDefault(); go(idx + 1); break;
+      case 'ArrowLeft':
+      case 'PageUp':
+        e.preventDefault(); go(idx - 1); break;
+      case 'Home':
+        e.preventDefault(); go(0); break;
+      case 'End':
+        e.preventDefault(); go(total - 1); break;
+      case 'f':
+      case 'F':
+        e.preventDefault();
+        if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen();
+        } else if (document.fullscreenElement && document.exitFullscreen) {
+          document.exitFullscreen();
+        }
+        break;
+    }
+  });
+
+  // Touch swipe
+  var tx = null;
+  document.addEventListener('touchstart', function (e) { tx = e.touches[0].clientX; }, { passive: true });
+  document.addEventListener('touchend',   function (e) {
+    if (tx == null) return;
+    var dx = e.changedTouches[0].clientX - tx;
+    if (Math.abs(dx) > 50) { go(idx + (dx < 0 ? 1 : -1)); }
+    tx = null;
+  }, { passive: true });
+
+  // Deep link on load
+  var m = /^#s(\d+)$/.exec(location.hash);
+  if (m) { go(parseInt(m[1], 10) - 1); } else { go(0); }
+
+  // Export for debugging
+  window.__deck = { go: go, total: total };
+})();
+</script>
+
+</body>
+</html>
