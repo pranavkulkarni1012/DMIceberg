@@ -206,16 +206,24 @@ DataWriter<GenericRecord> writer = Parquet.writeData(outputFile)
     .overwrite()
     .build();
 
+// toDataFile() reads finalized footer state -- it MUST be called AFTER close().
+// Close explicitly (not in a bare finally) so a flush/finalize failure surfaces
+// BEFORE we try to commit. On any exception, best-effort-delete the orphan file
+// so failed runs don't leak S3 objects that no snapshot references.
+DataFile dataFile;
 try {
     for (Record r : records) {
         writer.write(r);
     }
-} finally {
     writer.close();
+    dataFile = writer.toDataFile();
+} catch (Exception e) {
+    try { writer.close(); } catch (Exception ignored) {}
+    try { table.io().deleteFile(outputFile.location()); } catch (Exception ignored) {}
+    throw new RuntimeException("Iceberg write failed; orphan data file cleaned up", e);
 }
 
 // Commit the data file
-DataFile dataFile = writer.toDataFile();
 table.newAppend()
     .appendFile(dataFile)
     .commit();

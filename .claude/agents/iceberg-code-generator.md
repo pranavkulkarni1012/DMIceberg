@@ -121,11 +121,18 @@ import com.google.common.collect.ImmutableMap;
 public class IcebergService {
     private final GlueCatalog catalog;
 
-    public IcebergService(String warehouse) {
+    public IcebergService(String warehouse, String region) {
         this.catalog = new GlueCatalog();
+        // glue.region + s3.region are REQUIRED. Without them, the AWS SDK resolves
+        // region from env/IMDS/profile. In a container deployed in a different
+        // region than the warehouse, that silently triggers cross-region S3 access,
+        // which the platform explicitly disallows. Pass the producer's primary
+        // region from config; never rely on ambient region discovery.
         this.catalog.initialize("glue_catalog", ImmutableMap.of(
-            "warehouse", warehouse,
-            "io-impl", "org.apache.iceberg.aws.s3.S3FileIO"
+            "warehouse",   warehouse,
+            "io-impl",     "org.apache.iceberg.aws.s3.S3FileIO",
+            "glue.region", region,
+            "s3.region",   region
         ));
     }
 }

@@ -154,8 +154,10 @@ spark.sql(f"""
 ```python
 import sys
 from awsglue.utils import getResolvedOptions
+from awsglue.context import GlueContext
+from awsglue.job import Job
 from pyspark.sql import SparkSession
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 args = getResolvedOptions(sys.argv, ['JOB_NAME', 'database', 'table_name', 'warehouse'])
 
@@ -167,12 +169,21 @@ spark = SparkSession.builder \
     .config("spark.sql.catalog.glue_catalog.io-impl", "org.apache.iceberg.aws.s3.S3FileIO") \
     .getOrCreate()
 
+# Wire in the Glue job lifecycle so bookmarks + job metrics track correctly.
+# Calling Job.init without a matching Job.commit on the success path leaves the
+# bookmark unadvanced; omitting both entirely forfeits job metrics and retry state.
+glueContext = GlueContext(spark.sparkContext)
+job = Job(glueContext)
+job.init(args['JOB_NAME'], args)
+
 database = args['database']
 table_name = args['table_name']
 fqtn = f"{database}.{table_name}"
 
-expire_ts = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
-orphan_ts = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
+# Build tz-aware UTC timestamps; naive datetime in Glue may resolve to the worker's TZ.
+now_utc = datetime.now(timezone.utc)
+expire_ts = (now_utc - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+orphan_ts = (now_utc - timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
 
 # 1. Expire snapshots
 spark.sql(f"CALL glue_catalog.system.expire_snapshots(table => '{fqtn}', older_than => TIMESTAMP '{expire_ts}', retain_last => 3)")
@@ -181,11 +192,14 @@ spark.sql(f"CALL glue_catalog.system.expire_snapshots(table => '{fqtn}', older_t
 #    Probing format-version via snapshot summaries or SHOW TBLPROPERTIES is unreliable --
 #    format-version is a metadata-json field, not a snapshot summary entry, and it's
 #    only exposed as a tbl property when explicitly set. Instead, query the .files
-#    metadata table directly: v1 tables cannot have delete files by spec (content=0 only),
-#    so a positive count for content IN (1, 2) is sufficient and sound evidence that
-#    rewrite_position_delete_files is worth running.
+#    metadata table directly: v1 tables cannot have delete files by spec (content=0
+#    only). The procedure rewrite_position_delete_files only operates on
+#    POSITION_DELETES (content=1); equality deletes (content=2) are consolidated by
+#    rewrite_data_files in step 3. So gate on content=1 specifically -- including
+#    content=2 over-triggers the procedure on equality-deletes-only tables (typical
+#    of Flink CDC / Debezium pipelines), wasting a Spark planning pass each run.
 del_rows = spark.sql(f"""
-    SELECT COUNT(*) AS n FROM glue_catalog.{fqtn}.files WHERE content IN (1, 2)
+    SELECT COUNT(*) AS n FROM glue_catalog.{fqtn}.files WHERE content = 1
 """).collect()
 if del_rows and del_rows[0]['n'] > 0:
     spark.sql(f"CALL glue_catalog.system.rewrite_position_delete_files(table => '{fqtn}', options => map('partial-progress.enabled','true'))")
@@ -199,7 +213,8 @@ spark.sql(f"CALL glue_catalog.system.rewrite_manifests(table => '{fqtn}')")
 # 5. Remove orphan files
 spark.sql(f"CALL glue_catalog.system.remove_orphan_files(table => '{fqtn}', older_than => TIMESTAMP '{orphan_ts}')")
 
-spark.stop()
+# Commit ONLY on the success path; do NOT move this to a finally block.
+job.commit()
 ```
 
 ### For PyIceberg (ECS / Lambda Python)
@@ -218,16 +233,21 @@ catalog = GlueCatalog("glue_catalog", **{
 table = catalog.load_table("{database}.{table}")
 
 # EXPIRE SNAPSHOTS
-expire_before = datetime.now() - timedelta(days=7)
+# PyIceberg takes epoch-millis, not a datetime. Build tz-aware, then convert.
+from datetime import timezone
+expire_before_ms = int(
+    (datetime.now(timezone.utc) - timedelta(days=7)).timestamp() * 1000
+)
 
 # Optional: create a branch to preserve a reference before expiry
 table.manage_snapshots() \
     .create_branch(table.current_snapshot().snapshot_id, "audit-backup") \
     .commit()
 
-# Expire old snapshots
+# Expire old snapshots. The builder method is `expire_older_than(<epoch-ms>)`,
+# not `older_than(<datetime>)` -- the latter does not exist in PyIceberg 0.8.
 table.expire_snapshots() \
-    .older_than(expire_before) \
+    .expire_older_than(expire_before_ms) \
     .commit()
 
 # INSPECT for maintenance needs (to decide if compaction is needed)

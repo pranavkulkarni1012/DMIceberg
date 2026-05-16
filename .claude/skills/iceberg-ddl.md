@@ -161,11 +161,15 @@ import org.apache.iceberg.aws.glue.GlueCatalog;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.types.Types;
 
-// Catalog setup
+// Catalog setup. glue.region + s3.region are REQUIRED to prevent
+// ambient AWS SDK region resolution (env/IMDS/profile) from triggering
+// cross-region S3 access, which is disallowed on this platform.
 GlueCatalog catalog = new GlueCatalog();
 catalog.initialize("glue_catalog", ImmutableMap.of(
-    "warehouse", "s3://{bucket}/warehouse/",
-    "io-impl", "org.apache.iceberg.aws.s3.S3FileIO"
+    "warehouse",   "s3://{bucket}/warehouse/",
+    "io-impl",     "org.apache.iceberg.aws.s3.S3FileIO",
+    "glue.region", "{region}",
+    "s3.region",   "{region}"
 ));
 
 // CREATE

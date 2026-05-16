@@ -260,10 +260,11 @@ def register_iceberg_table_in_target_catalog(
         #   (a) Capture the previous metadata_location FIRST so we can roll back on failure.
         #   (b) Keep the drop+register window short; do not interleave other slow work.
         #   (c) Production deployments should prefer the Glue UpdateTable API (matches what
-        #       Iceberg's own GlueTableOperations.doCommit does) to swap only the
-        #       metadata_location parameter atomically. That path is not shown here because
-        #       it requires hand-crafting the Glue TableInput, which is a stable concern
-        #       best delegated to a small helper -- see docs/glue_update_table_helper.md.
+        #       Iceberg's own GlueTableOperations.doCommit does, in
+        #       org.apache.iceberg.aws.glue.GlueTableOperations#doCommit in apache/iceberg)
+        #       to swap only the metadata_location parameter atomically. That path is not
+        #       shown here because it requires hand-crafting the Glue TableInput, which is
+        #       a stable concern; see the upstream implementation for the canonical pattern.
         previous = catalog.load_table(identifier).metadata_location
         catalog.drop_table(identifier, purge=False)
         try:
@@ -308,8 +309,18 @@ public static void registerInTargetCatalog(
         catalog.registerTable(id, repointedMetadataLocation);
     } catch (AlreadyExistsException e) {
         // Advance metadata pointer: drop (purge=false preserves S3 files) + re-register.
+        // Capture the previous metadata pointer BEFORE the drop so we can roll forward
+        // if the re-register fails (transient Glue 5xx, IAM flap) -- otherwise the
+        // target catalog is left EMPTY and the next sync run takes the fresh-register
+        // path, permanently forgetting the previous pointer. Mirrors the Python helper above.
+        String previous = catalog.loadTable(id).operations().current().metadataFileLocation();
         catalog.dropTable(id, false);
-        catalog.registerTable(id, repointedMetadataLocation);
+        try {
+            catalog.registerTable(id, repointedMetadataLocation);
+        } catch (Exception ex) {
+            catalog.registerTable(id, previous);
+            throw ex;
+        }
     }
 }
 ```
@@ -838,8 +849,17 @@ public class IcebergMetadataRepointer {
             icebergCatalog.registerTable(id, metadataLocation);
         } catch (org.apache.iceberg.exceptions.AlreadyExistsException e) {
             // Advance pointer: drop (purge=false keeps S3 files) + re-register at new metadata location.
+            // Capture the previous pointer BEFORE the drop so we can roll forward on a
+            // failed re-register; otherwise a transient Glue 5xx leaves the target catalog
+            // empty and the next sync run forgets the previous metadata location.
+            String previous = icebergCatalog.loadTable(id).operations().current().metadataFileLocation();
             icebergCatalog.dropTable(id, false);
-            icebergCatalog.registerTable(id, metadataLocation);
+            try {
+                icebergCatalog.registerTable(id, metadataLocation);
+            } catch (Exception ex) {
+                icebergCatalog.registerTable(id, previous);
+                throw ex;
+            }
         }
     }
 

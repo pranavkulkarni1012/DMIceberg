@@ -1,0 +1,75 @@
+# Preset: AWS Glue + central lake (shared-bucket, permissive)
+#
+# Use this preset if your org:
+#   - Has a single central data lake bucket shared across producers
+#   - Allows cross-region S3 access (no strict isolation requirement)
+#   - Uses a single Glue catalog across regions, not per-region catalogs
+#
+# NOT for regulated industries with data residency rules. Use aws-glue-datamesh-strict
+# if you have compliance constraints.
+#
+# Producers inherit this via:
+#   extends: aws-glue-central-lake
+
+cloud: aws
+catalog: glue
+
+multi_region:
+  enabled: false                              # single-region by default; enable per-producer if needed
+  cross_region_s3_allowed: true
+  multi_region_access_points_allowed: true
+  # When enabled with these flags, the multi-region skill generates a different architecture:
+  #   no repointing needed; optional MRAP for read latency; readers may access any region.
+
+format_version: 2
+
+partition_defaults:
+  target_file_size_bytes: 134217728           # 128 MB
+  parquet_compression_codec: zstd
+  distribution_mode: hash
+  delete_mode: copy-on-write                  # read-heavy default for central-lake consumers
+  metadata_delete_after_commit: true
+  metadata_previous_versions_max: 10
+
+maintenance:
+  compaction:
+    schedule: "0 0 * * *"                     # daily midnight UTC
+    target_file_size_bytes: 134217728
+    min_input_files: 5
+  snapshot_expiration:
+    schedule: "0 2 * * 0"                     # Sunday 02:00 UTC
+    retain_days: 14                           # longer retention — central lake often audits further back
+    retain_last: 20
+  orphan_cleanup:
+    schedule: "0 3 1 * *"
+    older_than_days: 14
+
+kms:
+  bucket_encryption: AES256                   # SSE-S3 is common in central-lake pattern; override to aws:kms if needed
+
+lake_formation:
+  enabled: true                               # LF is common in central-lake pattern for grants
+  lf_tags:
+    required: [data_classification]
+
+governance:
+  required_tags:
+    - CostCenter
+    - Owner
+  change_approval:
+    ddl_requires_ticket: false
+    migrate_requires_ticket: false
+
+observability:
+  metrics_namespace: "Iceshelf"
+  alarms:
+    commit_failure_threshold: 10              # higher threshold — central lake has more concurrent writers
+    commit_failure_window_minutes: 15
+    snapshot_count_threshold: 20000
+
+naming_conventions:
+  bucket_pattern: "org-data-lake"             # single shared bucket
+  database_pattern: "{producer_name}"
+  warehouse_path: "s3://{bucket}/warehouse/{producer_name}/"
+
+orchestrator: mwaa                            # central-lake orgs often standardize on Airflow/MWAA

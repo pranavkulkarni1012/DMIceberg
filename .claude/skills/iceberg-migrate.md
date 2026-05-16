@@ -200,6 +200,8 @@ spark.sql(f"""
 ```python
 import sys
 from awsglue.utils import getResolvedOptions
+from awsglue.context import GlueContext
+from awsglue.job import Job
 from pyspark.sql import SparkSession
 
 args = getResolvedOptions(sys.argv, [
@@ -214,6 +216,13 @@ spark = SparkSession.builder \
     .config("spark.sql.catalog.glue_catalog.warehouse", args['warehouse']) \
     .config("spark.sql.catalog.glue_catalog.io-impl", "org.apache.iceberg.aws.s3.S3FileIO") \
     .getOrCreate()
+
+# Glue lifecycle: init tracks the run in the Glue console; commit on success path
+# advances job bookmarks. Do NOT move commit to finally -- failed runs should
+# replay the same input on retry.
+glueContext = GlueContext(spark.sparkContext)
+job = Job(glueContext)
+job.init(args['JOB_NAME'], args)
 
 strategy = args['strategy']
 database = args['database']
@@ -249,7 +258,8 @@ elif strategy == 'add_files':
 
 # Post-migration validation
 spark.sql(f"SELECT * FROM glue_catalog.{database}.{target_table}.snapshots").show(truncate=False)
-spark.stop()
+
+job.commit()
 ```
 
 ### For PyIceberg (ECS / Lambda Python)
@@ -297,15 +307,27 @@ table = catalog.create_table(
 # Without this, reads of any pre-existing Parquet file that you later register via
 # add_files will return nulls for columns whose Parquet-assigned ids don't match
 # the Iceberg field ids just assigned by create_table.
-import json
-from pyiceberg.schema import Schema
-name_mapping = table.schema().name_mapping
-with table.update_properties() as props:
-    props.set("schema.name-mapping.default", json.dumps(name_mapping.model_dump()))
+from pyiceberg.table.name_mapping import create_mapping_from_schema
+
+name_mapping = create_mapping_from_schema(table.schema())
+with table.transaction() as tx:
+    tx.set_properties({
+        # NameMapping is a pydantic model; model_dump_json() emits the canonical
+        # JSON form Iceberg readers expect. Do NOT wrap model_dump() in json.dumps --
+        # that double-serializes and loses the schema.name-mapping keys.
+        "schema.name-mapping.default": name_mapping.model_dump_json()
+    })
 
 # Step 3: Read source Parquet and append to Iceberg
+# GOTCHA: pq.read_table preserves the source Parquet's timestamp precision (Spark
+# and pandas default to ns). PyIceberg's default config rejects ns-precision data
+# at append time with "Unsupported schema projection from timestamp[ns] to
+# timestamp[us]". The schema-side downcast above is not enough -- the data side
+# must be cast on every batch before append. Reuse _downcast_ns_to_us to derive
+# the target schema, then arrow_table.cast() to apply per-column casts.
 # For smaller datasets (fits in memory):
 arrow_table = pq.read_table("s3://{source_bucket}/{source_path}")
+arrow_table = arrow_table.cast(_downcast_ns_to_us(arrow_table.schema))
 table.append(arrow_table)
 
 # For larger datasets, process in batches:
@@ -317,6 +339,7 @@ for batch_start in range(0, len(parquet_files), 100):
     batch_files = parquet_files[batch_start:batch_start + 100]
     tables = [pq.read_table(f"s3://{f}") for f in batch_files]
     combined = pa.concat_tables(tables)
+    combined = combined.cast(_downcast_ns_to_us(combined.schema))
     table.append(combined)
     print(f"Migrated batch {batch_start // 100 + 1}: {len(combined)} rows")
 
@@ -396,6 +419,9 @@ Generate a validation script that checks:
 
 ```python
 # Validation template (PySpark)
+import math
+from pyspark.sql.types import LongType, IntegerType, DoubleType, FloatType, ShortType, ByteType, DecimalType
+
 def validate_migration(spark, source_path, target_table):
     source_df = spark.read.parquet(source_path)
     target_df = spark.table(f"glue_catalog.{target_table}")
@@ -411,12 +437,34 @@ def validate_migration(spark, source_path, target_table):
     missing = s_cols - t_cols
     assert not missing, f"Missing columns: {missing}"
 
-    # Checksums on numeric columns
+    # Checksums on numeric columns.
+    # NOTE: `source_df.schema[col].dataType` is a DataType object, not a string.
+    # Comparing against string literals ('LongType', 'IntegerType', ...) never
+    # matches -- use isinstance against the actual type classes.
+    #
+    # GOTCHA: IEEE-754 float addition is not associative, and Spark's distributed
+    # SUM reduces partials in an order that depends on partition layout. Source
+    # (raw Parquet directory) and target (CTAS-written Iceberg, often with
+    # write.distribution-mode='hash') always have different layouts, so the same
+    # logical Float/Double data produces SUMs that differ by a few ULPs.
+    # Use exact `==` only for integer + Decimal types; use math.isclose for
+    # Float/Double so lossless migrations don't false-positive.
+    exact_types = (LongType, IntegerType, ShortType, ByteType, DecimalType)
+    float_types = (DoubleType, FloatType)
     for col_name in source_df.columns:
-        if source_df.schema[col_name].dataType in ('LongType', 'IntegerType', 'DoubleType'):
-            s_sum = source_df.agg({col_name: 'sum'}).collect()[0][0]
-            t_sum = target_df.agg({col_name: 'sum'}).collect()[0][0]
+        dtype = source_df.schema[col_name].dataType
+        if not isinstance(dtype, exact_types + float_types):
+            continue
+        s_sum = source_df.agg({col_name: 'sum'}).collect()[0][0]
+        t_sum = target_df.agg({col_name: 'sum'}).collect()[0][0]
+        if s_sum is None and t_sum is None:
+            continue
+        if isinstance(dtype, exact_types):
             assert s_sum == t_sum, f"Checksum mismatch on {col_name}: {s_sum} vs {t_sum}"
+        else:
+            assert math.isclose(s_sum, t_sum, rel_tol=1e-9), (
+                f"Float checksum mismatch on {col_name}: {s_sum} vs {t_sum} (rel_tol=1e-9)"
+            )
 
     print("Migration validation PASSED")
 ```
