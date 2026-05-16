@@ -53,7 +53,7 @@ Ask the producer for the following (skip what's already provided OR already capt
 
 ## Step 2: Delegate to Orchestrator
 
-Once requirements are gathered, spawn the `iceberg-orchestrator` agent with all collected information. Use `subagent_type: "iceberg-orchestrator"` when calling the Agent tool.
+Once requirements are gathered, spawn the `iceberg-orchestrator` agent with all collected information. Use `subagent_type: "iceberg-orchestrator"` when calling the Task tool.
 
 Pass the orchestrator a prompt that includes:
 - Producer type (new or existing)

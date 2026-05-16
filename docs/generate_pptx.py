@@ -518,8 +518,6 @@ def s6_multi_region():
     arrow_right(s, Inches(6.0), y + Inches(1.2), Inches(1.3), Inches(0.4), color=EMERALD)
     text(s, Inches(6.0), y + Inches(0.85), Inches(1.3), Inches(0.3),
          "S3 CRR", size=10, color=EMERALD, bold=True, align=PP_ALIGN.CENTER)
-    arrow_right(s, Inches(7.3), y + Inches(2.2), Inches(-1.3), Inches(0.4),
-                color=AMBER)  # draw arrow then flip via rotation? simpler: draw a label
     text(s, Inches(6.0), y + Inches(1.7), Inches(1.3), Inches(0.3),
          "repoint \u2192", size=10, color=AMBER, bold=True, align=PP_ALIGN.CENTER)
 

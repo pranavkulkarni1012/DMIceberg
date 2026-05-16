@@ -192,11 +192,14 @@ spark.sql(f"CALL glue_catalog.system.expire_snapshots(table => '{fqtn}', older_t
 #    Probing format-version via snapshot summaries or SHOW TBLPROPERTIES is unreliable --
 #    format-version is a metadata-json field, not a snapshot summary entry, and it's
 #    only exposed as a tbl property when explicitly set. Instead, query the .files
-#    metadata table directly: v1 tables cannot have delete files by spec (content=0 only),
-#    so a positive count for content IN (1, 2) is sufficient and sound evidence that
-#    rewrite_position_delete_files is worth running.
+#    metadata table directly: v1 tables cannot have delete files by spec (content=0
+#    only). The procedure rewrite_position_delete_files only operates on
+#    POSITION_DELETES (content=1); equality deletes (content=2) are consolidated by
+#    rewrite_data_files in step 3. So gate on content=1 specifically -- including
+#    content=2 over-triggers the procedure on equality-deletes-only tables (typical
+#    of Flink CDC / Debezium pipelines), wasting a Spark planning pass each run.
 del_rows = spark.sql(f"""
-    SELECT COUNT(*) AS n FROM glue_catalog.{fqtn}.files WHERE content IN (1, 2)
+    SELECT COUNT(*) AS n FROM glue_catalog.{fqtn}.files WHERE content = 1
 """).collect()
 if del_rows and del_rows[0]['n'] > 0:
     spark.sql(f"CALL glue_catalog.system.rewrite_position_delete_files(table => '{fqtn}', options => map('partial-progress.enabled','true'))")

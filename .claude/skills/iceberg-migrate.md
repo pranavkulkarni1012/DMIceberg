@@ -319,8 +319,15 @@ with table.transaction() as tx:
     })
 
 # Step 3: Read source Parquet and append to Iceberg
+# GOTCHA: pq.read_table preserves the source Parquet's timestamp precision (Spark
+# and pandas default to ns). PyIceberg's default config rejects ns-precision data
+# at append time with "Unsupported schema projection from timestamp[ns] to
+# timestamp[us]". The schema-side downcast above is not enough -- the data side
+# must be cast on every batch before append. Reuse _downcast_ns_to_us to derive
+# the target schema, then arrow_table.cast() to apply per-column casts.
 # For smaller datasets (fits in memory):
 arrow_table = pq.read_table("s3://{source_bucket}/{source_path}")
+arrow_table = arrow_table.cast(_downcast_ns_to_us(arrow_table.schema))
 table.append(arrow_table)
 
 # For larger datasets, process in batches:
@@ -332,6 +339,7 @@ for batch_start in range(0, len(parquet_files), 100):
     batch_files = parquet_files[batch_start:batch_start + 100]
     tables = [pq.read_table(f"s3://{f}") for f in batch_files]
     combined = pa.concat_tables(tables)
+    combined = combined.cast(_downcast_ns_to_us(combined.schema))
     table.append(combined)
     print(f"Migrated batch {batch_start // 100 + 1}: {len(combined)} rows")
 
@@ -411,6 +419,7 @@ Generate a validation script that checks:
 
 ```python
 # Validation template (PySpark)
+import math
 from pyspark.sql.types import LongType, IntegerType, DoubleType, FloatType, ShortType, ByteType, DecimalType
 
 def validate_migration(spark, source_path, target_table):
@@ -432,12 +441,30 @@ def validate_migration(spark, source_path, target_table):
     # NOTE: `source_df.schema[col].dataType` is a DataType object, not a string.
     # Comparing against string literals ('LongType', 'IntegerType', ...) never
     # matches -- use isinstance against the actual type classes.
-    numeric_types = (LongType, IntegerType, ShortType, ByteType, DoubleType, FloatType, DecimalType)
+    #
+    # GOTCHA: IEEE-754 float addition is not associative, and Spark's distributed
+    # SUM reduces partials in an order that depends on partition layout. Source
+    # (raw Parquet directory) and target (CTAS-written Iceberg, often with
+    # write.distribution-mode='hash') always have different layouts, so the same
+    # logical Float/Double data produces SUMs that differ by a few ULPs.
+    # Use exact `==` only for integer + Decimal types; use math.isclose for
+    # Float/Double so lossless migrations don't false-positive.
+    exact_types = (LongType, IntegerType, ShortType, ByteType, DecimalType)
+    float_types = (DoubleType, FloatType)
     for col_name in source_df.columns:
-        if isinstance(source_df.schema[col_name].dataType, numeric_types):
-            s_sum = source_df.agg({col_name: 'sum'}).collect()[0][0]
-            t_sum = target_df.agg({col_name: 'sum'}).collect()[0][0]
+        dtype = source_df.schema[col_name].dataType
+        if not isinstance(dtype, exact_types + float_types):
+            continue
+        s_sum = source_df.agg({col_name: 'sum'}).collect()[0][0]
+        t_sum = target_df.agg({col_name: 'sum'}).collect()[0][0]
+        if s_sum is None and t_sum is None:
+            continue
+        if isinstance(dtype, exact_types):
             assert s_sum == t_sum, f"Checksum mismatch on {col_name}: {s_sum} vs {t_sum}"
+        else:
+            assert math.isclose(s_sum, t_sum, rel_tol=1e-9), (
+                f"Float checksum mismatch on {col_name}: {s_sum} vs {t_sum} (rel_tol=1e-9)"
+            )
 
     print("Migration validation PASSED")
 ```

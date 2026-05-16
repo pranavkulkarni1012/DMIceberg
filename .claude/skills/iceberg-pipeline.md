@@ -665,9 +665,20 @@ IcebergCommits.withRetry(() -> {
         .overwrite()
         .build();
 
-    try { for (GenericRecord r : records) writer.write(r); } finally { writer.close(); }
-
-    DataFile dataFile = writer.toDataFile();   // partition is already attached
+    // `toDataFile()` reads the finalized footer and must be called AFTER `close()`.
+    // Close explicitly inside the try (not in a bare finally) so flush failures surface
+    // before commit. On any exception before commit, delete the orphan Parquet file so
+    // failed runs don't leak S3 objects that no Iceberg snapshot references.
+    DataFile dataFile;
+    try {
+        for (GenericRecord r : records) writer.write(r);
+        writer.close();
+        dataFile = writer.toDataFile();   // partition is already attached
+    } catch (Exception e) {
+        try { writer.close(); } catch (Exception ignored) {}
+        try { table.io().deleteFile(outputFile.location()); } catch (Exception ignored) {}
+        throw e;
+    }
     table.newAppend().appendFile(dataFile).commit();
     ```
 
@@ -770,6 +781,42 @@ resource "aws_ecs_task_definition" "ingest" {
   }])
 }
 
+# EventBridge Scheduler needs its OWN role -- it assumes under the
+# scheduler.amazonaws.com service principal, not ecs-tasks.amazonaws.com. Pointing
+# `target.role_arn` at the task role fails AssumeRole silently at every tick and the
+# ECS task never starts. The scheduler role also needs ecs:RunTask on the task
+# definition and iam:PassRole on both the task role and execution role.
+resource "aws_iam_role" "scheduler" {
+  name = "${var.producer_name}-iceberg-scheduler-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "scheduler.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "scheduler" {
+  role = aws_iam_role.scheduler.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["ecs:RunTask"]
+        Resource = [aws_ecs_task_definition.ingest.arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["iam:PassRole"]
+        Resource = [aws_iam_role.task.arn]
+      }
+    ]
+  })
+}
+
 resource "aws_scheduler_schedule" "ingest" {
   name       = "${var.producer_name}-iceberg-ingest"
   group_name = "default"
@@ -777,7 +824,7 @@ resource "aws_scheduler_schedule" "ingest" {
   schedule_expression = "rate(1 hour)"
   target {
     arn      = aws_ecs_cluster.this.arn
-    role_arn = aws_iam_role.task.arn
+    role_arn = aws_iam_role.scheduler.arn
     ecs_parameters {
       task_definition_arn = aws_ecs_task_definition.ingest.arn
       launch_type         = "FARGATE"
